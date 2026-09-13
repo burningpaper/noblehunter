@@ -7,11 +7,12 @@ before it quietly skews a night's scoring.
 """
 
 import re
-import unicodedata
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from core.text import normalize_text
 
 MIN_REFERENCE_ARTISTS = 3
 MIN_ACTIVE_SEARCH_TERMS = 5
@@ -25,9 +26,7 @@ class ProfileConfigError(ValueError):
     """The profile config file is missing, unreadable or invalid."""
 
 
-def normalize_text(value: str) -> str:
-    """Comparison form: Unicode-normalised, case-folded, single-spaced."""
-    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+__all__ = ["ProfileConfig", "ProfileConfigError", "load_profile_config", "normalize_text"]
 
 
 def _clean_entries(values: list[str]) -> list[str]:
