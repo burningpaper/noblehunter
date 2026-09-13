@@ -1,0 +1,7 @@
+# Keep the Vercel upload to the web app only. The pipeline runs on the Mac Mini.
+spike/
+pipeline/
+tests/
+.claude/
+spec.md
+IMPLEMENTATION_PLAN.md
