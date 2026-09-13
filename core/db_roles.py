@@ -14,10 +14,13 @@ Every call starts by revoking everything, so it's safe to re-run after each migr
 """
 
 import re
+import secrets
 
 from sqlalchemy import Connection, text
+from sqlalchemy.engine import make_url
 
 ROLE_NAME = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+PASSWORD_BYTES = 32  # 256 bits of entropy; Neon requires at least 60
 MIGRATION_TABLE = "alembic_version"
 
 WEB_EDITABLE_TABLES = (
@@ -31,6 +34,45 @@ WEB_EDITABLE_TABLES = (
 )
 WEB_OUTREACH_COLUMNS = ("status", "status_changed_at", "pitched_at", "notes")
 WEB_CURATOR_COLUMNS = ("excluded_at", "exclusion_reason")
+
+
+def generate_password() -> str:
+    return secrets.token_urlsafe(PASSWORD_BYTES)
+
+
+def create_login_role(connection: Connection, role: str) -> str:
+    """Create a LOGIN role with no special attributes or memberships and return its password.
+
+    Must be done with SQL, never in the Neon console: console-created roles join
+    `neon_superuser`. The password is hashed to SCRAM-SHA-256 on this machine, so only
+    the hash is sent to the server (and could ever appear in a statement log).
+    """
+    _check_role_name(role)
+    if connection.scalar(text("select 1 from pg_roles where rolname = :role"), {"role": role}):
+        raise ValueError(f"Role {role!r} already exists; refusing to overwrite its password")
+
+    password = generate_password()
+    verifier = _scram_verifier(connection, role, password)
+    # exec_driver_sql, not text(): a SCRAM verifier can contain "=:" which text() would
+    # misread as a bind parameter. Role name is validated; the verifier is base64 and '$'.
+    connection.exec_driver_sql(
+        f"CREATE ROLE {role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS "
+        f"PASSWORD '{verifier}'"
+    )
+    return password
+
+
+def connection_url_for(base_url: str, role: str, password: str) -> str:
+    """The base URL (host, database, SSL options) with the role's credentials swapped in."""
+    return make_url(base_url).set(username=role, password=password).render_as_string(hide_password=False)
+
+
+def _scram_verifier(connection: Connection, role: str, password: str) -> str:
+    pgconn = connection.connection.driver_connection.pgconn
+    verifier = pgconn.encrypt_password(password.encode(), role.encode(), b"scram-sha-256").decode()
+    if "'" in verifier:
+        raise RuntimeError("Unexpected quote in SCRAM verifier")
+    return verifier
 
 
 def grant_privileges(connection: Connection, web_role: str, pipeline_role: str) -> None:

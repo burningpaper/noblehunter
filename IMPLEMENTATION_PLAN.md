@@ -18,6 +18,7 @@ Plan for the Curator Discovery Pipeline in `spec.md`, updated with Jarred's deci
 | Repeat playlists | The same playlist **may** be pitched again for the same profile after 90 days (still bound by the curator's 90-day rule) | 2026-09-13 |
 | Digest and verdicts | **Digest page in the web app** with verdict buttons, plus a short morning **email linking to it** | 2026-09-13 |
 | Web login | **Sign in with Google**, restricted to burningpaper@gmail.com | 2026-09-13 |
+| Database roles | `noble_web` and `noble_pipeline` are **created with SQL by `pipeline.cli`, never in the Neon console**. Neon adds console/CLI/API roles to `neon_superuser` (`pg_write_all_data`, `CREATEROLE`, `BYPASSRLS`), which would make least-privilege grants meaningless | 2026-09-13 |
 | Repo / deploy | `github.com/burningpaper/noblehunter` (public, by Jarred's choice). Vercel project `noblehunter` with framework `fastapi`, live at `noblehunter.vercel.app`, Neon linked | 2026-09-13 |
 | Profiles | **Multiple profiles** (e.g. per release or project), each with its own genres, reference artists, anti-signals, tracks and search terms | 2026-09-13 |
 | Search terms | **Manual and suggested.** Jarred writes terms; Claude proposes new ones, which wait for approval | 2026-09-13 |
