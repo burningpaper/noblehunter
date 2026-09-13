@@ -1,0 +1,20 @@
+# Secrets
+.env
+**/.env
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Vercel CLI
+.vercel/
+
+# Spike output (large raw captures; trimmed fixtures move into tests/ in Stage 1)
+spike/fixtures/
+spike/captures/
+spike/results.json
+spike/search_comparison.json
+spike/search_quality.json
+spike/*.log
