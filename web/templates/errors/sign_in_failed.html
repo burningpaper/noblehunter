@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Sign-in didn't complete · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="message rise" aria-labelledby="message-title">
+  <p class="eyebrow">400</p>
+  <h1 id="message-title" class="message__title">Sign-in didn't complete</h1>
+  <p class="message__body">
+    Google's response couldn't be verified. This usually means the sign-in took too long or was
+    opened in a different tab. Starting again normally fixes it.
+  </p>
+  <a class="button button--primary" href="/auth/google">Start again</a>
+</section>
+{% endblock %}

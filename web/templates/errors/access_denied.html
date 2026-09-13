@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Not allowed · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="message rise" aria-labelledby="message-title">
+  <p class="eyebrow">403</p>
+  <h1 id="message-title" class="message__title">This account is not allowed</h1>
+  <p class="message__body">
+    Noble Hunter only lets in a verified Google account on its allow-list. If you use more than
+    one Google account, switch to the right one and try again.
+  </p>
+  <a class="button button--primary" href="/login">Try a different account</a>
+</section>
+{% endblock %}

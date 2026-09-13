@@ -113,17 +113,16 @@ class TestLayoutAndStatic:
         ):
             assert token in css
 
-    def test_unknown_page_gets_a_friendly_html_404_in_the_layout(self, client):
-        response = client.get("/definitely-not-a-page", headers={"accept": "text/html"})
+    def test_public_login_page_uses_the_layout(self, client):
+        response = client.get("/login", headers={"accept": "text/html"})
 
-        assert response.status_code == 404
+        assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert 'href="/static/css/app.css"' in response.text
         assert "<main" in response.text
-        assert "not found" in response.text.lower()
 
     def test_layout_is_accessible_basics(self, client):
-        html = client.get("/definitely-not-a-page", headers={"accept": "text/html"}).text
+        html = client.get("/login", headers={"accept": "text/html"}).text
 
         assert '<html lang="en"' in html
         assert '<meta name="viewport"' in html

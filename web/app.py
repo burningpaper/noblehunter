@@ -3,26 +3,31 @@
 `create_app(settings)` builds the real app. `app_from_environment()` is what Vercel imports:
 if settings are missing it still starts, answers /health, and shows a clear "not configured"
 page, rather than failing at import with a stack trace nobody sees.
+
+Middleware runs outermost first: security headers (so even redirects and 401s carry them),
+then the signed session cookie, then the sign-in/CSRF guard, then the routes.
 """
 
 import logging
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.sessions import SessionMiddleware
 
 from core.settings import MissingSettingError
+from web.auth import IdentityProvider, google_provider
+from web.auth import router as auth_router
 from web.db import build_engine
+from web.guard import install_guard
+from web.sessions import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS
 from web.settings import WebSettings, load_web_settings
+from web.templating import TEMPLATES_DIR, templates
 
 logger = logging.getLogger("noble_hunter.web")
 
-WEB_DIR = Path(__file__).parent
-templates = Jinja2Templates(directory=WEB_DIR / "templates")
-
+STATIC_DIR = TEMPLATES_DIR.parent / "static"
 CONTENT_SECURITY_POLICY = "; ".join(
     [
         "default-src 'self'",
@@ -45,10 +50,12 @@ SECURITY_HEADERS = {
 HSTS = "max-age=31536000; includeSubDomains"
 
 
-def create_app(settings: WebSettings) -> FastAPI:
-    app = _base_app(hsts=settings.secure_cookies)
+def create_app(settings: WebSettings, identity_provider: IdentityProvider | None = None) -> FastAPI:
+    app = _base_app()
     app.state.settings = settings
     app.state.engine = build_engine(settings)
+    app.state.identity_provider = identity_provider or google_provider(settings)
+    app.include_router(auth_router)
 
     @app.get("/health")
     def health() -> dict:
@@ -58,11 +65,22 @@ def create_app(settings: WebSettings) -> FastAPI:
     def home(request: Request) -> Response:
         return templates.TemplateResponse(request, "home.html")
 
+    # Added innermost first: guard, then session, then security headers outermost.
+    install_guard(app)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret.get_secret_value(),
+        session_cookie=SESSION_COOKIE,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        same_site="lax",
+        https_only=settings.secure_cookies,
+    )
+    _add_security_headers(app, hsts=settings.secure_cookies)
     return app
 
 
 def create_unconfigured_app() -> FastAPI:
-    app = _base_app(hsts=False)
+    app = _base_app()
 
     @app.get("/health")
     def health() -> dict:
@@ -72,6 +90,7 @@ def create_unconfigured_app() -> FastAPI:
     def not_configured(request: Request) -> Response:
         return templates.TemplateResponse(request, "errors/not_configured.html", status_code=503)
 
+    _add_security_headers(app, hsts=False)
     return app
 
 
@@ -84,17 +103,9 @@ def app_from_environment() -> FastAPI:
     return create_app(settings)
 
 
-def _base_app(hsts: bool) -> FastAPI:
+def _base_app() -> FastAPI:
     app = FastAPI(title="Noble Hunter", docs_url=None, redoc_url=None, openapi_url=None)
-    app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
-
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next) -> Response:
-        response = await call_next(request)
-        response.headers.update(SECURITY_HEADERS)
-        if hsts:
-            response.headers["Strict-Transport-Security"] = HSTS
-        return response
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, error: StarletteHTTPException) -> Response:
@@ -110,6 +121,16 @@ def _base_app(hsts: bool) -> FastAPI:
         return JSONResponse({"detail": "Something went wrong."}, status_code=500)
 
     return app
+
+
+def _add_security_headers(app: FastAPI, hsts: bool) -> None:
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        if hsts:
+            response.headers["Strict-Transport-Security"] = HSTS
+        return response
 
 
 def _wants_html(request: Request) -> bool:

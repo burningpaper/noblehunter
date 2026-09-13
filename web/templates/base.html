@@ -10,14 +10,29 @@
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/vendor/htmx.min.js" defer></script>
 </head>
-<body>
+<body{% if csrf_token %} hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <a class="wordmark" href="/" aria-label="Noble Hunter home">
       <span class="wordmark__mark" aria-hidden="true"></span>
       Noble Hunter
     </a>
-    {% block nav %}{% endblock %}
+    {% if current_user %}
+    <nav class="site-nav" aria-label="Account">
+      <span class="user-chip">
+        {% if current_user.picture %}
+        <img class="user-chip__avatar" src="{{ current_user.picture }}" alt="" width="24" height="24" referrerpolicy="no-referrer">
+        {% else %}
+        <span class="user-chip__avatar user-chip__avatar--initial" aria-hidden="true">{{ current_user.email[:1] | upper }}</span>
+        {% endif %}
+        <span class="user-chip__email">{{ current_user.email }}</span>
+      </span>
+      <button class="button button--ghost" type="button" hx-post="/logout">
+        Sign out
+        <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      </button>
+    </nav>
+    {% endif %}
   </header>
   <main id="main" class="page" tabindex="-1">
     {% block content %}{% endblock %}
