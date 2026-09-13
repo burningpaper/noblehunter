@@ -143,7 +143,9 @@ Status: In Progress.
 - ✅ Spotify fetcher `pipeline/spotify.py` (`8a858de`, merged in `c91eb4a`), with 96 unit tests and 4 live tests.
 - ✅ Evaluate and qualify `pipeline/evaluate.py` and `pipeline/qualify.py` (`c2d586c`): alive, real and fit checks, plus the new `spotify-owned` reason (migration 0002).
 - ✅ `python -m pipeline.cli run` / `report` (`6e79061`).
-- ✅ First real run (local `noble_browser` database, stand-in example profile, 2026-09-14): 5 terms found 274 playlists (261 new); 15 fetched, 0 qualified (9 dead, 6 off-genre). The rejections were checked by hand and are correct. A larger batch runs overnight.
+- ✅ First real run (local `noble_browser` database, stand-in example profile, 2026-09-14): 5 terms found 274 playlists (261 new); 15 fetched, 0 qualified (9 dead, 6 off-genre). The rejections were checked by hand and are correct.
+- ✅ Overnight batch: 149 fetched, **15 qualified (10%)**, 121 dead, 21 no-fit, 8 Spotify-owned, 1 vanished. Spotify never pushed back (21 minutes).
+- ⏳ Found by reading the leads, and needing Jarred's call: (1) a minimum-followers floor, since many qualifiers are personal playlists with under 100 followers; (2) an owner filter or reachability tag for automated and service accounts (Chosic, volt.fm, chart and label accounts); (3) one pitch per curator in the digest (arcticdrones owns two qualifiers).
 - Note: "The Sound of …" playlists belong to Spotify's `thesoundsofspotify` account but don't use the `37i9dQZF1` ID prefix, so they have to be filtered by owner at fetch time.
 
 ## Stage 4: Fetch and parse
