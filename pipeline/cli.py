@@ -6,18 +6,30 @@ uv run python -m pipeline.cli profile import config/profiles/example.yaml
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.db_roles import create_app_roles, grant_privileges
+from core.models import Profile
 from core.profile_config import ProfileConfigError, load_profile_config
 from core.profile_import import import_profile
 from core.settings import MissingSettingError, load_settings
+from pipeline.nightly import describe_run, run_pipeline
+from pipeline.report import format_report, qualified_playlists
+from pipeline.search import BraveProvider, SearchProvider, SerperProvider
+from pipeline.settings import PipelineSettings, load_pipeline_settings
+
+SEARCH_TIMEOUT_SECONDS = 20
+DEFAULT_REPORT_LIMIT = 50
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Noble Hunter pipeline tools.")
 profile_app = typer.Typer(no_args_is_help=True, help="Manage artist profiles.")
@@ -163,6 +175,97 @@ def create_roles_command(
         f"Created login roles {web_role!r} and {pipeline_role!r} with least-privilege access.\n"
         f"Connection URLs written to {output} (readable only by you). Passwords were not printed."
     )
+
+
+def build_search_providers(settings: PipelineSettings, client: httpx.Client) -> list[SearchProvider]:
+    """The real search engines. Tests replace this with fakes."""
+    return [
+        SerperProvider(settings.serper_api_key.get_secret_value(), client),
+        BraveProvider(settings.brave_api_key.get_secret_value(), client),
+    ]
+
+
+@contextmanager
+def open_spotify_client() -> Iterator:
+    """Headless Chromium for Spotify. Imported lazily so other commands never need Playwright."""
+    from pipeline.spotify import SpotifyWebClient
+
+    with SpotifyWebClient() as client:
+        yield client
+
+
+@app.command("run")
+def run_command(
+    profile: Annotated[str | None, typer.Option(help="Only search for this profile (by name).")] = None,
+    fetch_limit: Annotated[
+        int | None, typer.Option(min=1, help="Fetch and judge at most this many candidates.")
+    ] = None,
+) -> None:
+    """Discover playlists for active profiles, then fetch and judge the candidates."""
+    try:
+        settings = load_pipeline_settings()
+        database_url = settings.sqlalchemy_url()
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
+
+    engine = create_engine(database_url)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            profile_id = _profile_id_by_name(session, profile) if profile else None
+            with httpx.Client(timeout=SEARCH_TIMEOUT_SECONDS) as http, open_spotify_client() as spotify:
+                report = run_pipeline(
+                    session,
+                    providers=build_search_providers(settings, http),
+                    fetcher=spotify,
+                    trigger="manual",
+                    today=now.date(),
+                    now=now,
+                    profile_id=profile_id,
+                    fetch_limit=fetch_limit,
+                )
+        typer.echo(describe_run(report))
+    except (LookupError, ValueError) as error:
+        raise fail(str(error)) from None
+    except SQLAlchemyError as error:
+        raise fail(f"Database error during the run: {describe_db_error(error)}") from None
+    finally:
+        engine.dispose()
+
+
+@app.command("report")
+def report_command(
+    profile: Annotated[str | None, typer.Option(help="Only leads for this profile (by name).")] = None,
+    limit: Annotated[
+        int, typer.Option(min=1, help="Show at most this many playlists.")
+    ] = DEFAULT_REPORT_LIMIT,
+) -> None:
+    """List qualified playlists, best fit first."""
+    try:
+        database_url = load_pipeline_settings().sqlalchemy_url()
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
+
+    engine = create_engine(database_url)
+    today = datetime.now(UTC).date()
+    try:
+        with Session(engine) as session:
+            profile_id = _profile_id_by_name(session, profile) if profile else None
+            items = qualified_playlists(session, today=today, profile_id=profile_id, limit=limit)
+        typer.echo(format_report(items, today=today))
+    except LookupError as error:
+        raise fail(str(error)) from None
+    except SQLAlchemyError as error:
+        raise fail(f"Database error while reporting: {describe_db_error(error)}") from None
+    finally:
+        engine.dispose()
+
+
+def _profile_id_by_name(session: Session, name: str) -> int:
+    profile_id = session.scalar(select(Profile.id).where(func.lower(Profile.name) == name.strip().lower()))
+    if profile_id is None:
+        raise LookupError(f"No profile called “{name}”.")
+    return profile_id
 
 
 if __name__ == "__main__":
