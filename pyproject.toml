@@ -42,6 +42,7 @@ entrypoint = "web.app:app"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["live: hits real external services; run with --run-live"]
 
 [tool.ruff]
 line-length = 110
