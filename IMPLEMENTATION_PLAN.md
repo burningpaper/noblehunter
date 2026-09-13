@@ -11,6 +11,14 @@ Plan for the Curator Discovery Pipeline in `spec.md`, updated with Jarred's deci
 | Search providers | **Serper and Brave**, results merged | 2026-09-13 |
 | Where settings are edited | **Small web settings app** | 2026-09-13 |
 | Hosting | **Split:** web app on **Vercel**, nightly pipeline on the **Mac Mini**, both using one **Neon** database | 2026-09-13 |
+| Orchestration | **Plain Python** stage runner (no LangGraph) | 2026-09-13 |
+| Cross-profile pitching | A curator appears **at most once per 90 days across all profiles** | 2026-09-13 |
+| Verdict effects | `skip` and `pitched`: the curator is eligible again after 90 days. `bad-fit` and `dead`: the curator is excluded **permanently** | 2026-09-13 |
+| Re-checks | `no-contact` and not-alive rejections are re-checked after 90 days. Pay-to-play and bot (`real`) rejections are permanent | 2026-09-13 |
+| Repeat playlists | The same playlist **may** be pitched again for the same profile after 90 days (still bound by the curator's 90-day rule) | 2026-09-13 |
+| Digest and verdicts | **Digest page in the web app** with verdict buttons, plus a short morning **email linking to it** | 2026-09-13 |
+| Web login | **Sign in with Google**, restricted to burningpaper@gmail.com | 2026-09-13 |
+| Repo / deploy | `github.com/burningpaper/noblehunter` (public, by Jarred's choice). Vercel project `noblehunter` with framework `fastapi`, live at `noblehunter.vercel.app`, Neon linked | 2026-09-13 |
 | Profiles | **Multiple profiles** (e.g. per release or project), each with its own genres, reference artists, anti-signals, tracks and search terms | 2026-09-13 |
 | Search terms | **Manual and suggested.** Jarred writes terms; Claude proposes new ones, which wait for approval | 2026-09-13 |
 

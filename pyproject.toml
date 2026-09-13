@@ -8,18 +8,27 @@ requires-python = ">=3.12"
 # Keep the pipeline's heavy dependencies (Playwright) in the `pipeline` group below.
 dependencies = [
     "fastapi>=0.117.1",
+    "psycopg[binary]>=3.2.10",
+    "pydantic-settings>=2.10",
+    "sqlalchemy>=2.0.43",
 ]
 
 [dependency-groups]
 dev = [
+    "alembic>=1.16",
     "httpx>=0.28",
     "pytest>=8.4",
+    "pyyaml>=6.0.2",
     "ruff>=0.13",
+    "typer>=0.17",
     "uvicorn>=0.35",
 ]
 pipeline = [
+    "alembic>=1.16",
     "httpx>=0.28",
     "playwright>=1.55",
+    "pyyaml>=6.0.2",
+    "typer>=0.17",
 ]
 
 [tool.vercel]
