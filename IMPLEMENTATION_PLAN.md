@@ -139,7 +139,11 @@ Goal: For each active profile, run its active search terms through Serper and Br
 Success Criteria: A dry run yields 150–300 candidates across active profiles. Re-running the same night adds zero duplicates. Short pages are logged as warnings. Tests use recorded provider responses, including a short-page case.
 Status: In Progress.
 - ✅ Search layer `pipeline/search.py` (`6e51053`, merged in `797fdaa`): Serper and Brave, merged candidates, Spotify-editorial filter, warnings and errors that never leak keys. 53 tests. Live check on "glitchy ambient": 27 + 36 playlists, 4 shared, 59 merged.
-- ⏳ Discover step that writes candidates to `playlists` and `playlist_sources` per profile and search term, with exclusion applied before any fetch.
+- ✅ Discover step `pipeline/discover.py` (`9216bc0`): candidates plus attribution per term and run, exclusion applied before any fetch, and re-check windows honoured.
+- ✅ Spotify fetcher `pipeline/spotify.py` (`8a858de`, merged in `c91eb4a`), with 96 unit tests and 4 live tests.
+- ✅ Evaluate and qualify `pipeline/evaluate.py` and `pipeline/qualify.py` (`c2d586c`): alive, real and fit checks, plus the new `spotify-owned` reason (migration 0002).
+- ✅ `python -m pipeline.cli run` / `report` (`6e79061`).
+- ✅ First real run (local `noble_browser` database, stand-in example profile, 2026-09-14): 5 terms found 274 playlists (261 new); 15 fetched, 0 qualified (9 dead, 6 off-genre). The rejections were checked by hand and are correct. A larger batch runs overnight.
 - Note: "The Sound of …" playlists belong to Spotify's `thesoundsofspotify` account but don't use the `37i9dQZF1` ID prefix, so they have to be filtered by owner at fetch time.
 
 ## Stage 4: Fetch and parse
