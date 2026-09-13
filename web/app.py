@@ -21,6 +21,7 @@ from web.auth import IdentityProvider, google_provider
 from web.auth import router as auth_router
 from web.db import build_engine
 from web.guard import install_guard
+from web.profiles import router as profiles_router
 from web.sessions import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS
 from web.settings import WebSettings, load_web_settings
 from web.templating import TEMPLATES_DIR, templates
@@ -56,6 +57,7 @@ def create_app(settings: WebSettings, identity_provider: IdentityProvider | None
     app.state.engine = build_engine(settings)
     app.state.identity_provider = identity_provider or google_provider(settings)
     app.include_router(auth_router)
+    app.include_router(profiles_router)
 
     @app.get("/health")
     def health() -> dict:

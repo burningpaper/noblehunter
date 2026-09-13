@@ -1,0 +1,36 @@
+<section class="card profile-status rise" id="profile-status" aria-labelledby="status-heading" aria-live="polite"
+         hx-target="this" hx-swap="outerHTML">
+  <div class="profile-status__header">
+    <h2 id="status-heading" class="card__title">Status</h2>
+    {% include "profiles/_badge.html" %}
+  </div>
+
+  {% if problems %}
+  <p class="profile-status__lede">
+    {% if refused %}<strong>Not ready to go live yet.</strong> {% endif %}Before this profile can run overnight:
+  </p>
+  <ul class="checklist" role="list">
+    {% for problem in problems %}
+    <li class="checklist__item">{{ problem }}</li>
+    {% endfor %}
+  </ul>
+  {% elif profile.is_active %}
+  <p class="profile-status__lede">Runs every night.</p>
+  {% else %}
+  <p class="profile-status__lede">Everything's in place. Activate it to include it in the nightly run.</p>
+  {% endif %}
+
+  <div class="form__actions">
+    {% if profile.is_active %}
+    <button class="button" type="button" hx-post="/profiles/{{ profile.id }}/pause">
+      Pause
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+    {% else %}
+    <button class="button button--primary" type="button" hx-post="/profiles/{{ profile.id }}/activate">
+      Activate
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+    {% endif %}
+  </div>
+</section>

@@ -1,0 +1,114 @@
+"""Profiles pages.
+
+Deliberately thin: read the form, call `core.profiles`, render. Forms post with htmx and
+swap their own fragment back in, so a validation error (HTTP 422) shows up right where
+it happened without a page reload.
+"""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse, Response
+from sqlalchemy.orm import Session
+
+from core.models import Profile
+from core.profile_rules import DEFAULT_DIGEST_TARGET
+from core.profiles import (
+    ProfileValidationError,
+    activation_problems,
+    create_profile,
+    get_profile,
+    list_profiles,
+    set_profile_active,
+    update_profile_settings,
+)
+from web.db import get_db
+from web.templating import templates
+
+router = APIRouter(prefix="/profiles")
+DbSession = Annotated[Session, Depends(get_db)]
+FormText = Annotated[str, Form()]
+
+
+@router.get("")
+def profiles_page(request: Request, db: DbSession) -> Response:
+    context = {"profiles": list_profiles(db), "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET}}
+    return templates.TemplateResponse(request, "profiles/list.html", {**context, "errors": {}})
+
+
+@router.post("")
+def create(request: Request, db: DbSession, name: FormText = "", digest_target: FormText = "") -> Response:
+    try:
+        profile = create_profile(db, name, digest_target)
+        db.commit()
+    except ProfileValidationError as error:
+        context = {"form": {"name": name, "digest_target": digest_target}, "errors": error.errors}
+        return templates.TemplateResponse(request, "profiles/_create_form.html", context, status_code=422)
+    return _redirect(request, f"/profiles/{profile.id}")
+
+
+@router.get("/{profile_id}")
+def profile_page(request: Request, profile_id: int, db: DbSession) -> Response:
+    profile = _profile_or_404(db, profile_id)
+    context = {
+        "profile": profile,
+        "form": {"name": profile.name, "digest_target": profile.digest_target},
+        "errors": {},
+        "saved": False,
+        "problems": activation_problems(profile),
+    }
+    return templates.TemplateResponse(request, "profiles/detail.html", context)
+
+
+@router.post("/{profile_id}/settings")
+def save_settings(
+    request: Request, profile_id: int, db: DbSession, name: FormText = "", digest_target: FormText = ""
+) -> Response:
+    profile = _profile_or_404(db, profile_id)
+    try:
+        update_profile_settings(db, profile_id, name, digest_target)
+        db.commit()
+    except ProfileValidationError as error:
+        context = {"profile": profile, "form": {"name": name, "digest_target": digest_target}}
+        return templates.TemplateResponse(
+            request, "profiles/_settings_form.html", {**context, "errors": error.errors, "saved": False}, 422
+        )
+    context = {"profile": profile, "form": {"name": profile.name, "digest_target": profile.digest_target}}
+    return templates.TemplateResponse(
+        request, "profiles/_settings_form.html", {**context, "errors": {}, "saved": True}
+    )
+
+
+@router.post("/{profile_id}/activate")
+def activate(request: Request, profile_id: int, db: DbSession) -> Response:
+    return _change_status(request, db, profile_id, active=True)
+
+
+@router.post("/{profile_id}/pause")
+def pause(request: Request, profile_id: int, db: DbSession) -> Response:
+    return _change_status(request, db, profile_id, active=False)
+
+
+def _change_status(request: Request, db: Session, profile_id: int, active: bool) -> Response:
+    profile = _profile_or_404(db, profile_id)
+    status_code, refused = 200, False
+    try:
+        set_profile_active(db, profile_id, active)
+        db.commit()
+    except ProfileValidationError:
+        status_code, refused = 422, True
+    context = {"profile": profile, "problems": activation_problems(profile), "refused": refused}
+    return templates.TemplateResponse(request, "profiles/_status.html", context, status_code=status_code)
+
+
+def _profile_or_404(db: Session, profile_id: int) -> Profile:
+    try:
+        return get_profile(db, profile_id)
+    except LookupError:
+        raise HTTPException(status_code=404) from None
+
+
+def _redirect(request: Request, url: str) -> Response:
+    if request.headers.get("hx-request"):
+        return Response(status_code=200, headers={"HX-Redirect": url})
+    return RedirectResponse(url, status_code=303)

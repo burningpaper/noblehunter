@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Profiles · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="page-heading rise">
+  <p class="eyebrow">Profiles</p>
+  <h1 class="page-heading__title">Who you're finding curators for</h1>
+  <p class="page-heading__lede">
+    Each profile has its own genres, reference artists, tracks and search terms. Only active profiles
+    run overnight.
+  </p>
+</section>
+
+<div class="split-layout">
+  <section aria-labelledby="profiles-heading">
+    <h2 id="profiles-heading" class="visually-hidden">Your profiles</h2>
+    {% if profiles %}
+    <ul class="profile-list" role="list">
+      {% for profile in profiles %}
+      <li class="rise">
+        <a class="card profile-card" href="/profiles/{{ profile.id }}">
+          <span class="profile-card__header">
+            <span class="profile-card__name">{{ profile.name }}</span>
+            {% include "profiles/_badge.html" %}
+          </span>
+          <span class="profile-card__meta">
+            {{ profile.genre_count }} {{ 'genre' if profile.genre_count == 1 else 'genres' }} ·
+            {{ profile.reference_artist_count }} reference {{ 'artist' if profile.reference_artist_count == 1 else 'artists' }} ·
+            {{ profile.track_count }} {{ 'track' if profile.track_count == 1 else 'tracks' }} ·
+            {{ profile.active_term_count }} active {{ 'term' if profile.active_term_count == 1 else 'terms' }} ·
+            {{ profile.digest_target }} per digest
+          </span>
+          {% if not profile.ready %}
+          <span class="profile-card__hint">
+            {{ profile.problems | length }} {{ 'thing' if profile.problems | length == 1 else 'things' }} to add before it can run
+          </span>
+          {% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="card empty-state rise">
+      <h2 class="empty-state__title">Create your first profile</h2>
+      <p class="empty-state__body">
+        A profile describes one artist or release: the music it sounds like, the artists it sits next
+        to, and the playlists it belongs on.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  <aside class="card rise" aria-labelledby="new-profile-heading">
+    <h2 id="new-profile-heading" class="card__title">New profile</h2>
+    {% include "profiles/_create_form.html" %}
+  </aside>
+</div>
+{% endblock %}

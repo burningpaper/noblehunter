@@ -5,8 +5,11 @@
   <p class="eyebrow">Curator discovery</p>
   <h1 class="hero__title">Every morning, a short list of people worth writing to.</h1>
   <p class="hero__lede">
-    You're signed in as <strong>{{ current_user.email }}</strong>. Profiles, reference artists and
-    search terms arrive here next.
+    You're signed in as <strong>{{ current_user.email }}</strong>. Start with a profile: the music
+    it sounds like, the artists it sits next to, and the searches that find its playlists.
   </p>
+  <div class="hero__actions">
+    <a class="button button--primary" href="/profiles">Go to profiles</a>
+  </div>
 </section>
 {% endblock %}

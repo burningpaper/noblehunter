@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}{{ profile.name }} · Noble Hunter{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/profiles">Profiles</a>
+  <span class="breadcrumb__separator" aria-hidden="true">/</span>
+  <span aria-current="page">{{ profile.name }}</span>
+</nav>
+
+<section class="page-heading rise">
+  <p class="eyebrow">Profile</p>
+  <h1 class="page-heading__title">{{ profile.name }}</h1>
+</section>
+
+<div class="split-layout">
+  <section class="card rise" aria-labelledby="settings-heading">
+    <h2 id="settings-heading" class="card__title">Settings</h2>
+    {% include "profiles/_settings_form.html" %}
+  </section>
+
+  {% include "profiles/_status.html" %}
+</div>
+{% endblock %}

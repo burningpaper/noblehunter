@@ -1,0 +1,26 @@
+<form class="form" hx-post="/profiles" hx-target="this" hx-swap="outerHTML" novalidate>
+  <div class="field">
+    <label class="field__label" for="new-profile-name">Name</label>
+    <input class="input" id="new-profile-name" name="name" value="{{ form.name }}" maxlength="80"
+           autocomplete="off" required
+           {% if errors.name %}aria-invalid="true" aria-describedby="new-profile-name-error"{% endif %}>
+    {% if errors.name %}<p class="field__error" id="new-profile-name-error">{{ errors.name }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label class="field__label" for="new-profile-target">Playlists per digest</label>
+    <input class="input input--narrow" id="new-profile-target" name="digest_target" type="number"
+           inputmode="numeric" min="1" max="50" value="{{ form.digest_target }}"
+           aria-describedby="new-profile-target-hint{% if errors.digest_target %} new-profile-target-error{% endif %}"
+           {% if errors.digest_target %}aria-invalid="true"{% endif %}>
+    <p class="field__hint" id="new-profile-target-hint">How many leads to show each morning (1–50).</p>
+    {% if errors.digest_target %}<p class="field__error" id="new-profile-target-error">{{ errors.digest_target }}</p>{% endif %}
+  </div>
+
+  <div class="form__actions">
+    <button class="button button--primary" type="submit">
+      Create profile
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+  </div>
+</form>

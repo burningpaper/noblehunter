@@ -12,11 +12,9 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from core.profile_rules import MAX_DIGEST_TARGET, MIN_ACTIVE_SEARCH_TERMS, MIN_REFERENCE_ARTISTS
 from core.text import normalize_text
 
-MIN_REFERENCE_ARTISTS = 3
-MIN_ACTIVE_SEARCH_TERMS = 5
-MAX_DIGEST_TARGET = 50
 SPOTIFY_TRACK_URL = re.compile(
     r"^https://open\.spotify\.com/(?:intl-[a-z-]+/)?track/([A-Za-z0-9]{22})(?:[?#].*)?$"
 )
