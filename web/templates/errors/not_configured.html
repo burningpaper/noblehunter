@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Not configured · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="message rise" aria-labelledby="message-title">
+  <p class="eyebrow">503</p>
+  <h1 id="message-title" class="message__title">Not configured yet</h1>
+  <p class="message__body">
+    The web app is missing required settings. Check the deployment's environment variables
+    against <code>.env.example</code>; the server log names exactly which ones.
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Something went wrong · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="message rise" aria-labelledby="message-title">
+  <p class="eyebrow">500</p>
+  <h1 id="message-title" class="message__title">Something went wrong</h1>
+  <p class="message__body">The error has been logged. Try again in a moment.</p>
+  <a class="button button--primary" href="/">Back to the start</a>
+</section>
+{% endblock %}

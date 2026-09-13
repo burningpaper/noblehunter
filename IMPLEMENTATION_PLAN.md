@@ -18,6 +18,7 @@ Plan for the Curator Discovery Pipeline in `spec.md`, updated with Jarred's deci
 | Repeat playlists | The same playlist **may** be pitched again for the same profile after 90 days (still bound by the curator's 90-day rule) | 2026-09-13 |
 | Digest and verdicts | **Digest page in the web app** with verdict buttons, plus a short morning **email linking to it** | 2026-09-13 |
 | Web login | **Sign in with Google**, restricted to burningpaper@gmail.com | 2026-09-13 |
+| Visual direction | **Dark studio**: near-black ground, one restrained accent, clean sans-serif, generous spacing, subtle motion | 2026-09-13 |
 | Database roles | `noble_web` and `noble_pipeline` are **created with SQL by `pipeline.cli`, never in the Neon console**. Neon adds console/CLI/API roles to `neon_superuser` (`pg_write_all_data`, `CREATEROLE`, `BYPASSRLS`), which would make least-privilege grants meaningless | 2026-09-13 |
 | Repo / deploy | `github.com/burningpaper/noblehunter` (public, by Jarred's choice). Vercel project `noblehunter` with framework `fastapi`, live at `noblehunter.vercel.app`, Neon linked | 2026-09-13 |
 | Profiles | **Multiple profiles** (e.g. per release or project), each with its own genres, reference artists, anti-signals, tracks and search terms | 2026-09-13 |
@@ -53,7 +54,7 @@ Because of these, the spec's static YAML inputs (§2) become **database tables e
 | Repo layout | One repo, three packages: `core/` (models, config, exclusion), `web/` (deployed to Vercel), `pipeline/` (runs on the Mac Mini). `uv` dependency groups keep Playwright out of the Vercel bundle | Shared models without shipping a browser to Vercel. |
 | Database | Neon Postgres (linked via Vercel's Neon integration), SQLAlchemy 2.0 + Alembic, psycopg 3 | The web app uses Neon's **pooled** connection string with no client-side pool, since Vercel starts many short-lived instances. The pipeline and Alembic migrations use the **direct** connection. A Neon branch gives a disposable test DB. |
 | Database roles | Separate Neon roles for `web` and `pipeline` | Least privilege: the public-facing app can edit settings and verdicts but can't touch run internals or drop tables. |
-| **Settings web app** | **FastAPI + Jinja2 templates + HTMX**, Tailwind (standalone CLI, no Node build) | Server-rendered pages in the same codebase and against the same models as the pipeline. HTMX gives inline editing, approve/reject buttons and smooth partial updates without a separate JavaScript frontend to maintain. |
+| **Settings web app** | **FastAPI + Jinja2 templates + HTMX** (pinned copy stored in the repo, no CDN), **hand-written CSS with design tokens** (no build step), **Authlib** for Google OpenID Connect, signed session cookies | Server-rendered pages in the same codebase and against the same models as the pipeline. HTMX gives inline editing, approve/reject buttons and smooth partial updates without a separate JavaScript frontend to maintain. Tailwind was dropped: a CSS build on Vercel's Python builder adds a moving part for no real gain at this size. Authlib handles OAuth state, nonce and ID-token verification rather than hand-rolling them. |
 | Web app hosting | **Vercel** (FastAPI on the Python runtime), deployed from git | Reachable from anywhere, with no inbound ports on the home network. Because it's public, it gets a real login (Stage 2). |
 | Spotify fetch | Playwright (Chromium) with GraphQL replay, as proven in Stage 0 | |
 | Web search | Serper + Brave behind one `search()` interface, merged and de-duplicated, with per-page logging | Decision above. |
@@ -118,11 +119,20 @@ Success Criteria:
 - Estimated searches per night per profile is shown against the provider quota.
 - Responsive and keyboard-navigable, with visible focus states, a meaningful transition when an item is saved or deleted, and loading feedback on every action.
 - Route tests (pytest + FastAPI TestClient) cover happy path, validation failures and concurrent edits. A Playwright browser check covers the main flows.
-- **Security (public internet):** every route except login requires a session. Cookies are `Secure`, `HttpOnly` and `SameSite=Lax`. Forms carry CSRF tokens. Login attempts are rate-limited, and failures are logged without leaking which field was wrong. Tests prove unauthenticated requests are refused on every route.
+- **Security (public internet):** every route except `/health`, `/login` and the OAuth callback requires a session. Only a Google account with a *verified* email on the allow-list gets in. OAuth state and nonce are verified. Cookies are `Secure`, `HttpOnly` and `SameSite=Lax`, and are signed with `SESSION_SECRET`. Forms and HTMX requests carry CSRF tokens. Failed sign-ins are logged without leaking details. Tests prove unauthenticated requests are refused on every route. There are no passwords to rate-limit, because Google handles credentials.
 - **Pipeline status panel:** shows the last run's start and finish times, counts and heartbeat. It warns if no run has finished in 26 hours, which is how a switched-off Mac Mini becomes visible.
 - **Run now** inserts a `run_requests` row. A second click while one is pending does nothing.
-- **Deploy:** `vercel deploy` to a preview works against a Neon branch. The production deploy works against the main Neon database using the pooled connection string. The Vercel bundle contains no Playwright or Chromium.
-Status: Not Started
+- **Deploy:** the production deploy works against Neon as `noble_web` via `WEB_DATABASE_URL` (pooled). Google sign-in works on `noblehunter.vercel.app` and `localhost:8000` only, because preview URLs change and Google needs exact redirect URIs. The Vercel bundle contains no Playwright or Chromium.
+
+Steps, each test-first and committed separately:
+- **2a. Web foundation:** app factory, web settings (`WEB_DATABASE_URL`, `SESSION_SECRET`, Google client, allowed emails), per-request DB session, base layout and dark-studio design tokens, the stored htmx copy, friendly 404/500 pages.
+- **2b. Sign in with Google:** login, callback and logout. Allow-list plus verified email, the session guard on every route, and CSRF.
+- **2c. Profiles:** list, create, rename, set digest target, activate and pause, with the activation rules shown inline.
+- **2d. Profile contents:** genres (ordered), reference artists, anti-signals, tracks and manual search terms, edited inline with HTMX, with the searches-per-night estimate.
+- **2e. Run now and the status panel:** `run_requests` insert (safe to repeat), last run and heartbeat, and a staleness warning.
+- **2f. Ship:** deploy, check the main flows in a real browser with Playwright, and polish accessibility and motion.
+
+Status: In Progress (started 2026-09-13).
 
 ## Stage 3: Discover
 Goal: For each active profile, run its active search terms through Serper and Brave, merge and de-duplicate, filter Spotify-run owners, record `playlist_sources`, and dedupe against exclusion before any fetch.

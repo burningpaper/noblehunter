@@ -28,7 +28,7 @@ class Settings(BaseSettings):
         secret = (
             self.database_url if pooled or self.database_url_unpooled is None else self.database_url_unpooled
         )
-        return _with_driver(secret.get_secret_value())
+        return with_psycopg_driver(secret.get_secret_value())
 
 
 def load_settings(env_file: str | tuple[str, ...] | None = ENV_FILES) -> Settings:
@@ -45,7 +45,8 @@ def load_settings(env_file: str | tuple[str, ...] | None = ENV_FILES) -> Setting
         raise MissingSettingError(f"Invalid settings: {invalid}.") from None
 
 
-def _with_driver(url: str) -> str:
+def with_psycopg_driver(url: str) -> str:
+    """postgres:// and postgresql:// URLs rewritten to use the psycopg 3 driver."""
     for scheme in PLAIN_SCHEMES:
         if url.startswith(scheme):
             return DRIVER_SCHEME + url[len(scheme) :]

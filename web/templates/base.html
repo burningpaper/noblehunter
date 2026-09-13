@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  {# htmx would otherwise inject an inline <style>, which our CSP blocks; its styles live in app.css. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+  <title>{% block title %}Noble Hunter{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="wordmark" href="/" aria-label="Noble Hunter home">
+      <span class="wordmark__mark" aria-hidden="true"></span>
+      Noble Hunter
+    </a>
+    {% block nav %}{% endblock %}
+  </header>
+  <main id="main" class="page" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
