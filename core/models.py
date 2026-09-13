@@ -63,6 +63,7 @@ class RejectionReason(StrEnum):
     NOT_ALIVE = "not-alive"
     NOT_REAL = "not-real"
     NO_FIT = "no-fit"
+    SPOTIFY_OWNED = "spotify-owned"  # Spotify's own playlists: never pitchable (migration 0002)
 
 
 class SizeBand(StrEnum):
