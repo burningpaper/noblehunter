@@ -1,0 +1,47 @@
+# Example profile. Copy this file, fill in real details, then import it:
+#   uv run python -m pipeline.cli profile import config/profiles/<your-profile>.yaml
+#
+# Everything here can also be edited later in the web app.
+# The artists, tracks and terms below are placeholders, not a real campaign.
+
+name: Example Profile
+active: false            # set true only once there are at least 5 search terms
+digest_target: 20        # leads per morning digest (1-50)
+
+# Priority order: the first genre matters most when scoring fit.
+genres:
+  - IDM
+  - braindance
+  - ambient electronica
+  - experimental electronic
+
+# Artists whose presence on a playlist signals a good fit. At least 3.
+reference_artists:
+  - Aphex Twin
+  - Boards of Canada
+  - Autechre
+  - Plaid
+  - Ochre
+
+# Anything here on a playlist means wrong playlist: a hard reject.
+anti_signals:
+  artists:
+    - Lofi Girl
+  terms:
+    - lo-fi study beats
+    - EDM
+    - big room
+
+# The tracks being pitched. Replace the placeholder link with a real track.
+tracks:
+  - title: Placeholder Track
+    spotify_url: https://open.spotify.com/track/0000000000000000000000
+    description: One line on what the track sounds like.
+
+# Search phrases the discovery step cycles through.
+search_terms:
+  - glitchy ambient
+  - braindance playlist
+  - IDM playlist
+  - late-night electronics
+  - Boards of Canada playlist
