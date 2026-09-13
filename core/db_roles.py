@@ -67,6 +67,23 @@ def connection_url_for(base_url: str, role: str, password: str) -> str:
     return make_url(base_url).set(username=role, password=password).render_as_string(hide_password=False)
 
 
+def create_app_roles(
+    connection: Connection, web_role: str, pipeline_role: str, pooled_url: str, direct_url: str
+) -> dict[str, str]:
+    """Create both login roles, grant them, and return their URLs keyed by env var name.
+
+    Runs in the caller's transaction, so a failure part-way leaves no role behind. The web
+    app gets the pooled URL (Vercel's short-lived instances); the pipeline gets the direct one.
+    """
+    web_password = create_login_role(connection, web_role)
+    pipeline_password = create_login_role(connection, pipeline_role)
+    grant_privileges(connection, web_role=web_role, pipeline_role=pipeline_role)
+    return {
+        "WEB_DATABASE_URL": connection_url_for(pooled_url, web_role, web_password),
+        "PIPELINE_DATABASE_URL": connection_url_for(direct_url, pipeline_role, pipeline_password),
+    }
+
+
 def _scram_verifier(connection: Connection, role: str, password: str) -> str:
     pgconn = connection.connection.driver_connection.pgconn
     verifier = pgconn.encrypt_password(password.encode(), role.encode(), b"scram-sha-256").decode()

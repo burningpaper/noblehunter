@@ -4,6 +4,7 @@ uv run python -m pipeline.cli --help
 uv run python -m pipeline.cli profile import config/profiles/example.yaml
 """
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -12,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from core.db_roles import grant_privileges
+from core.db_roles import create_app_roles, grant_privileges
 from core.profile_config import ProfileConfigError, load_profile_config
 from core.profile_import import import_profile
 from core.settings import MissingSettingError, load_settings
@@ -80,6 +81,65 @@ def grant_command(
         engine.dispose()
 
     typer.echo(f"Granted least-privilege access: {web_role!r} (web), {pipeline_role!r} (pipeline).")
+
+
+DEFAULT_ROLES_FILE = Path(".env.roles.local")
+ROLES_FILE_HEADER = (
+    "# Created by `pipeline.cli db create-roles`. Keep private; never commit.\n"
+    "# WEB_DATABASE_URL goes into Vercel. PIPELINE_DATABASE_URL stays on the Mac Mini.\n"
+)
+
+
+def write_private_env_file(path: Path, values: dict[str, str]) -> None:
+    """Create a brand-new file readable only by the current user. Never overwrites."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        handle.write(ROLES_FILE_HEADER)
+        handle.writelines(f"{key}={value}\n" for key, value in values.items())
+
+
+@db_app.command("create-roles")
+def create_roles_command(
+    web_role: Annotated[str, typer.Option(help="Login role for the web app on Vercel.")] = "noble_web",
+    pipeline_role: Annotated[
+        str, typer.Option(help="Login role for the pipeline on the Mac Mini.")
+    ] = "noble_pipeline",
+    output: Annotated[
+        Path, typer.Option(help="New private file for the connection URLs.")
+    ] = DEFAULT_ROLES_FILE,
+) -> None:
+    """Create the web and pipeline login roles with least privilege. Passwords are never printed."""
+    if output.exists():
+        raise fail(f"{output} already exists; move it aside first so no credentials are overwritten.")
+    try:
+        settings = load_settings()
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
+
+    engine = create_engine(settings.sqlalchemy_url(pooled=False))
+    try:
+        with engine.begin() as connection:
+            urls = create_app_roles(
+                connection,
+                web_role=web_role,
+                pipeline_role=pipeline_role,
+                pooled_url=settings.sqlalchemy_url(pooled=True),
+                direct_url=settings.sqlalchemy_url(pooled=False),
+            )
+            # Inside the transaction: if the file can't be written, the roles roll back.
+            write_private_env_file(output, urls)
+    except (ValueError, LookupError, OSError) as error:
+        raise fail(str(error)) from None
+    except SQLAlchemyError as error:
+        output.unlink(missing_ok=True)
+        raise fail(f"Database error while creating roles: {type(error).__name__}") from None
+    finally:
+        engine.dispose()
+
+    typer.echo(
+        f"Created login roles {web_role!r} and {pipeline_role!r} with least-privilege access.\n"
+        f"Connection URLs written to {output} (readable only by you). Passwords were not printed."
+    )
 
 
 if __name__ == "__main__":
