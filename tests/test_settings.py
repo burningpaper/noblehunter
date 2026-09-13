@@ -61,5 +61,24 @@ def test_repr_never_leaks_password(monkeypatch):
     assert "secret" not in str(settings)
 
 
+def test_default_load_reads_env_local(monkeypatch, tmp_path):
+    (tmp_path / ".env.local").write_text(f"DATABASE_URL={POOLED}\n")
+    monkeypatch.chdir(tmp_path)
+
+    settings = load_settings()
+
+    assert settings.sqlalchemy_url(pooled=True).startswith("postgresql+psycopg://")
+
+
+def test_env_local_overrides_env(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("DATABASE_URL=postgresql://from-env/db\n")
+    (tmp_path / ".env.local").write_text("DATABASE_URL=postgresql://from-env-local/db\n")
+    monkeypatch.chdir(tmp_path)
+
+    settings = load_settings()
+
+    assert settings.sqlalchemy_url(pooled=True) == "postgresql+psycopg://from-env-local/db"
+
+
 def test_settings_type_is_exported():
     assert Settings is not None

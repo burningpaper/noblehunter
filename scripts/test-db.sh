@@ -8,7 +8,7 @@ set -euo pipefail
 
 NAME="noble-test-db"
 PORT="55432"
-IMAGE="postgres:17"
+IMAGE="postgres:18"  # match Neon's major version
 
 case "${1:-}" in
   up)

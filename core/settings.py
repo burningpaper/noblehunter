@@ -8,6 +8,8 @@ the direct one when it's configured.
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Later files win: .env.local (per-machine, e.g. from Vercel/Neon) overrides .env.
+ENV_FILES = (".env", ".env.local")
 DRIVER_SCHEME = "postgresql+psycopg://"
 PLAIN_SCHEMES = ("postgresql://", "postgres://")
 
@@ -17,7 +19,7 @@ class MissingSettingError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILES, extra="ignore")
 
     database_url: SecretStr
     database_url_unpooled: SecretStr | None = None
@@ -29,14 +31,15 @@ class Settings(BaseSettings):
         return _with_driver(secret.get_secret_value())
 
 
-def load_settings(env_file: str | None = ".env") -> Settings:
+def load_settings(env_file: str | tuple[str, ...] | None = ENV_FILES) -> Settings:
     try:
         return Settings(_env_file=env_file)
     except ValidationError as error:
         missing = [str(e["loc"][0]).upper() for e in error.errors() if e["type"] == "missing"]
         if missing:
             raise MissingSettingError(
-                f"{', '.join(missing)} is not set. Add it to .env (see .env.example) or the environment."
+                f"{', '.join(missing)} is not set. "
+                "Add it to .env or .env.local (see .env.example), or set it in the environment."
             ) from None
         invalid = ", ".join(str(e["loc"][0]).upper() for e in error.errors())
         raise MissingSettingError(f"Invalid settings: {invalid}.") from None
