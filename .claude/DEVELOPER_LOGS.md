@@ -170,4 +170,18 @@ Real browsers caught three things the tests couldn't:
 - **Renaming a profile left the old name in the heading.** It's now fixed with out-of-band title and breadcrumb updates.
 - **A scare that turned out to be the test tool.** A run logged inline-style CSP violations after each 422. Re-running with a `securitypolicyviolation` listener and no screenshots showed zero violations. Playwright's `page.screenshot` injects a `<style>` to hide the text cursor, and our CSP rightly blocks it. The app was clean all along. Browser checks now record problems before taking screenshots.
 
-Browser checks now use their own `noble_browser` database in the same container, so they can never race pytest's schema rebuild. The full Stage 2d flow ran end to end with zero console errors. The check that counts is a real request to `/health`. Two more housekeeping notes. `vercel link` wrote a `.env.local` holding only a `VERCEL_OIDC_TOKEN`, which is gitignored. And the new `.env*` ignore rule needed a `!.env.example` exception so the template stays tracked.
+Browser checks now use their own `noble_browser` database in the same container, so they can never race pytest's schema rebuild. The full Stage 2d flow ran end to end with zero console errors.
+
+## 2026-09-14 (small hours): Discover, and a fetcher that reads Spotify's mistakes
+
+With the search layer merged, discovery got its database half. `pipeline/discover.py` takes each active search term, asks both engines, and decides per playlist. A never-seen playlist becomes a `candidate` with a tidied placeholder name, so "AMBIENT IDM 🤖 Braindance - playlist by Irles Music | Spotify" becomes the bit a human would call it. One that's excluded or already in flight is left alone. One whose re-check window has passed goes back into the queue. Every hit is still written to `playlist_sources`, even for playlists we skip, because the weekly "which terms actually work" report needs the whole picture. Sources insert with `ON CONFLICT DO NOTHING`, so re-running within one run can't double-count. Runs record their stage counts per profile, adding to one row rather than duplicating it.
+
+The pipeline picks its database connection by least privilege: `PIPELINE_DATABASE_URL` (the `noble_pipeline` role from `.env.roles.local`) first, then the owner's direct URL, then `DATABASE_URL`.
+
+The second helper finished the Spotify fetcher (`pipeline/spotify.py`): 96 unit tests, plus 4 live tests that fetched a real 127-track playlist with every date, a curator's 17 playlists, a large playlist read as first page plus tail, and a missing playlist that correctly came back as `not_found`. It also corrected my brief. I'd written that 127 tracks needs offsets 25 and 75, but page 75 ends at track 124, so the real plan is 25, 75, 125. The spike's `range(25, 127, 50)` had it right all along.
+
+Its live runs found two things no fixture would have shown:
+- **Missing playlists and users** never trigger the player's API call at all; Spotify just serves a 404 page. The client now checks the page status straight away instead of waiting out a 30-second timeout.
+- **Spotify's web player sends Sentry telemetry** as newline-delimited JSON. Playwright's `post_data_json` throws its own error type on it, which escaped the request listener. The client now filters by URL first and decodes bodies itself.
+
+Descriptions arrive with entities like `&amp;#x27;` and `&amp;lt;3`. Tags are stripped before unescaping, so a heart emoticon survives as `<3` rather than being eaten as a tag. The check that counts is a real request to `/health`. Two more housekeeping notes. `vercel link` wrote a `.env.local` holding only a `VERCEL_OIDC_TOKEN`, which is gitignored. And the new `.env*` ignore rule needed a `!.env.example` exception so the template stays tracked.
