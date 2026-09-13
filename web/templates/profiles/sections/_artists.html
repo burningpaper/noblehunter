@@ -1,0 +1,31 @@
+{% set sf = section_form or {} %}
+{% set se = section_errors or {} %}
+<section class="card content-section" id="section-artists" aria-labelledby="artists-heading" hx-target="this"
+         hx-swap="outerHTML">
+  <header class="content-section__header">
+    <h2 id="artists-heading" class="card__title">Reference artists</h2>
+    <p class="content-section__hint">Artists whose presence on a playlist says it's the right room for this music.</p>
+  </header>
+
+  {% if profile.reference_artists %}
+  <ul class="chip-list" role="list">
+    {% for artist in profile.reference_artists | sort(attribute="display_name") %}
+    <li class="chip">
+      <span>{{ artist.display_name }}</span>
+      <button class="chip__remove" type="button" hx-delete="/profiles/{{ profile.id }}/artists/{{ artist.id }}"
+              aria-label="Remove {{ artist.display_name }}">×</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="content-section__empty">No reference artists yet.</p>
+  {% endif %}
+
+  <form class="inline-form" hx-post="/profiles/{{ profile.id }}/artists" novalidate>
+    <label class="visually-hidden" for="artist-name">Artist name</label>
+    <input class="input" id="artist-name" name="name" value="{{ sf.name or '' }}" maxlength="200" autocomplete="off"
+           placeholder="Add an artist" {% if se.name %}aria-invalid="true" aria-describedby="artist-name-error"{% endif %}>
+    <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+    {% if se.name %}<p class="field__error inline-form__error" id="artist-name-error">{{ se.name }}</p>{% endif %}
+  </form>
+</section>

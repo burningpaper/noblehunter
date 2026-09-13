@@ -125,10 +125,10 @@ Success Criteria:
 - **Deploy:** the production deploy works against Neon as `noble_web` via `WEB_DATABASE_URL` (pooled). Google sign-in works on `noblehunter.vercel.app` and `localhost:8000` only, because preview URLs change and Google needs exact redirect URIs. The Vercel bundle contains no Playwright or Chromium.
 
 Steps, each test-first and committed separately:
-- **2a. Web foundation:** app factory, web settings (`WEB_DATABASE_URL`, `SESSION_SECRET`, Google client, allowed emails), per-request DB session, base layout and dark-studio design tokens, the stored htmx copy, friendly 404/500 pages.
-- **2b. Sign in with Google:** login, callback and logout. Allow-list plus verified email, the session guard on every route, and CSRF.
-- **2c. Profiles:** list, create, rename, set digest target, activate and pause, with the activation rules shown inline.
-- **2d. Profile contents:** genres (ordered), reference artists, anti-signals, tracks and manual search terms, edited inline with HTMX, with the searches-per-night estimate.
+- ✅ **2a. Web foundation** (`7fae4c9`): app factory, web settings (`WEB_DATABASE_URL`, `SESSION_SECRET`, Google client, allowed emails), per-request DB session, base layout and dark-studio design tokens, the stored htmx copy, friendly 404/500 pages.
+- ✅ **2b. Sign in with Google** (`9cb409a`, live on Vercel and verified by Jarred): login, callback and logout. Allow-list plus verified email, the session guard on every route, and CSRF.
+- ✅ **2c. Profiles** (`70309ca`): list, create, rename, set digest target, activate and pause, with the activation rules shown inline.
+- ✅ **2d. Profile contents** (committed 2026-09-13 overnight, not yet pushed): genres (ordered), reference artists, anti-signals, tracks and manual search terms, edited inline with HTMX, with the searches-per-night estimate. An active profile pauses itself if an edit leaves it incomplete.
 - **2e. Run now and the status panel:** `run_requests` insert (safe to repeat), last run and heartbeat, and a staleness warning.
 - **2f. Ship:** deploy, check the main flows in a real browser with Playwright, and polish accessibility and motion.
 
@@ -137,7 +137,10 @@ Status: In Progress (started 2026-09-13).
 ## Stage 3: Discover
 Goal: For each active profile, run its active search terms through Serper and Brave, merge and de-duplicate, filter Spotify-run owners, record `playlist_sources`, and dedupe against exclusion before any fetch.
 Success Criteria: A dry run yields 150–300 candidates across active profiles. Re-running the same night adds zero duplicates. Short pages are logged as warnings. Tests use recorded provider responses, including a short-page case.
-Status: Not Started
+Status: In Progress.
+- ✅ Search layer `pipeline/search.py` (`6e51053`, merged in `797fdaa`): Serper and Brave, merged candidates, Spotify-editorial filter, warnings and errors that never leak keys. 53 tests. Live check on "glitchy ambient": 27 + 36 playlists, 4 shared, 59 merged.
+- ⏳ Discover step that writes candidates to `playlists` and `playlist_sources` per profile and search term, with exclusion applied before any fetch.
+- Note: "The Sound of …" playlists belong to Spotify's `thesoundsofspotify` account but don't use the `37i9dQZF1` ID prefix, so they have to be filtered by owner at fetch time.
 
 ## Stage 4: Fetch and parse
 Goal: The Stage 0 fetch approach made production-grade: rate limit, retry then `fetch-failed`, a track ceiling / tail read for huge playlists, and a parser working from trimmed fixtures.

@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from core.profile_contents import search_requests_per_night
 from web.sessions import SESSION_CSRF, current_user
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -19,3 +20,4 @@ def auth_context(request: Request) -> dict:
 
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR, context_processors=[auth_context])
+templates.env.globals["search_requests_per_night"] = search_requests_per_night

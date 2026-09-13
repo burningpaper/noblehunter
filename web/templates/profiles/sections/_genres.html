@@ -1,0 +1,39 @@
+{% set sf = section_form or {} %}
+{% set se = section_errors or {} %}
+<section class="card content-section" id="section-genres" aria-labelledby="genres-heading" hx-target="this"
+         hx-swap="outerHTML">
+  <header class="content-section__header">
+    <h2 id="genres-heading" class="card__title">Genres</h2>
+    <p class="content-section__hint">Most important first. Fit scoring weighs the top genre most.</p>
+  </header>
+
+  {% set genres = profile.genres | sort(attribute="priority") %}
+  {% if genres %}
+  <ol class="item-list" role="list">
+    {% for genre in genres %}
+    <li class="item">
+      <span class="item__rank" aria-hidden="true">{{ loop.index }}</span>
+      <span class="item__label">{{ genre.tag }}</span>
+      <span class="item__actions">
+        <button class="icon-button" type="button" hx-post="/profiles/{{ profile.id }}/genres/{{ genre.id }}/move"
+                hx-vals='{"direction": "up"}' aria-label="Move {{ genre.tag }} up" {% if loop.first %}disabled{% endif %}>↑</button>
+        <button class="icon-button" type="button" hx-post="/profiles/{{ profile.id }}/genres/{{ genre.id }}/move"
+                hx-vals='{"direction": "down"}' aria-label="Move {{ genre.tag }} down" {% if loop.last %}disabled{% endif %}>↓</button>
+        <button class="icon-button icon-button--danger" type="button"
+                hx-delete="/profiles/{{ profile.id }}/genres/{{ genre.id }}" aria-label="Remove {{ genre.tag }}">×</button>
+      </span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="content-section__empty">No genres yet.</p>
+  {% endif %}
+
+  <form class="inline-form" hx-post="/profiles/{{ profile.id }}/genres" novalidate>
+    <label class="visually-hidden" for="genre-tag">Genre</label>
+    <input class="input" id="genre-tag" name="tag" value="{{ sf.tag or '' }}" maxlength="100" autocomplete="off"
+           placeholder="Add a genre" {% if se.tag %}aria-invalid="true" aria-describedby="genre-tag-error"{% endif %}>
+    <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+    {% if se.tag %}<p class="field__error inline-form__error" id="genre-tag-error">{{ se.tag }}</p>{% endif %}
+  </form>
+</section>

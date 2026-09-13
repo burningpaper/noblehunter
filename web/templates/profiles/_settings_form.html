@@ -25,3 +25,8 @@
     {% if saved %}<p class="form__saved" role="status">Saved</p>{% endif %}
   </div>
 </form>
+{% if saved %}
+{# Keep the page heading and breadcrumb in step with a rename. #}
+{% include "profiles/_title.html" %}
+{% include "profiles/_breadcrumb_current.html" %}
+{% endif %}

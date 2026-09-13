@@ -1,0 +1,56 @@
+{% set sf = section_form or {} %}
+{% set se = section_errors or {} %}
+<section class="card content-section" id="section-tracks" aria-labelledby="tracks-heading" hx-target="this"
+         hx-swap="outerHTML">
+  <header class="content-section__header">
+    <h2 id="tracks-heading" class="card__title">Tracks</h2>
+    <p class="content-section__hint">What you're pitching. Briefs name the track that fits each playlist best.</p>
+  </header>
+
+  {% if profile.tracks %}
+  <ul class="item-list" role="list">
+    {% for track in profile.tracks | sort(attribute="title") %}
+    <li class="item item--stacked">
+      <span class="item__body">
+        <span class="item__label">{{ track.title }}</span>
+        {% if track.description %}<span class="item__meta">{{ track.description }}</span>{% endif %}
+        <a class="item__link" href="{{ track.spotify_url }}" target="_blank" rel="noopener noreferrer">{{ track.spotify_url }}</a>
+      </span>
+      <span class="item__actions">
+        <button class="icon-button icon-button--danger" type="button"
+                hx-delete="/profiles/{{ profile.id }}/tracks/{{ track.id }}" aria-label="Remove {{ track.title }}">×</button>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="content-section__empty">No tracks yet.</p>
+  {% endif %}
+
+  <form class="form form--compact" hx-post="/profiles/{{ profile.id }}/tracks" novalidate>
+    <div class="form__row">
+      <div class="field">
+        <label class="field__label" for="track-title">Title</label>
+        <input class="input" id="track-title" name="title" value="{{ sf.title or '' }}" maxlength="200" autocomplete="off"
+               {% if se.title %}aria-invalid="true" aria-describedby="track-title-error"{% endif %}>
+        {% if se.title %}<p class="field__error" id="track-title-error">{{ se.title }}</p>{% endif %}
+      </div>
+      <div class="field">
+        <label class="field__label" for="track-url">Spotify link</label>
+        <input class="input" id="track-url" name="spotify_url" value="{{ sf.spotify_url or '' }}" inputmode="url"
+               autocomplete="off" placeholder="https://open.spotify.com/track/…"
+               {% if se.spotify_url %}aria-invalid="true" aria-describedby="track-url-error"{% endif %}>
+        {% if se.spotify_url %}<p class="field__error" id="track-url-error">{{ se.spotify_url }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="field">
+      <label class="field__label" for="track-description">One line on how it sounds <span class="field__optional">(optional)</span></label>
+      <input class="input" id="track-description" name="description" value="{{ sf.description or '' }}" maxlength="300"
+             autocomplete="off" {% if se.description %}aria-invalid="true" aria-describedby="track-description-error"{% endif %}>
+      {% if se.description %}<p class="field__error" id="track-description-error">{{ se.description }}</p>{% endif %}
+    </div>
+    <div class="form__actions">
+      <button class="button" type="submit">Add track <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+    </div>
+  </form>
+</section>

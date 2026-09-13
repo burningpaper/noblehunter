@@ -6,18 +6,14 @@ every problem is reported at once, so a typo'd field name or a duplicated artist
 before it quietly skews a night's scoring.
 """
 
-import re
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from core.profile_rules import MAX_DIGEST_TARGET, MIN_ACTIVE_SEARCH_TERMS, MIN_REFERENCE_ARTISTS
+from core.spotify_urls import canonical_track_url
 from core.text import normalize_text
-
-SPOTIFY_TRACK_URL = re.compile(
-    r"^https://open\.spotify\.com/(?:intl-[a-z-]+/)?track/([A-Za-z0-9]{22})(?:[?#].*)?$"
-)
 
 
 class ProfileConfigError(ValueError):
@@ -53,11 +49,11 @@ class Track(_Strict):
 
     @field_validator("spotify_url")
     @classmethod
-    def canonical_track_url(cls, value: str) -> str:
-        match = SPOTIFY_TRACK_URL.match(value)
-        if not match:
+    def check_track_url(cls, value: str) -> str:
+        canonical = canonical_track_url(value)
+        if canonical is None:
             raise ValueError("must be an open.spotify.com/track/... link")
-        return f"https://open.spotify.com/track/{match.group(1)}"
+        return canonical
 
 
 class AntiSignals(_Strict):

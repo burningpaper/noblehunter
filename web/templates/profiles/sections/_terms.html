@@ -1,0 +1,52 @@
+{% set sf = section_form or {} %}
+{% set se = section_errors or {} %}
+{% set requests = search_requests_per_night(profile) %}
+{% set active_terms = profile.search_terms | selectattr("status", "equalto", "active") | list | length %}
+<section class="card content-section" id="section-terms" aria-labelledby="terms-heading" hx-target="this"
+         hx-swap="outerHTML">
+  <header class="content-section__header">
+    <h2 id="terms-heading" class="card__title">Search terms</h2>
+    <p class="content-section__hint">
+      {{ active_terms }} active {{ 'term' if active_terms == 1 else 'terms' }} · {{ requests }} search {{ 'request' if requests == 1 else 'requests' }} per night
+    </p>
+  </header>
+
+  {% if se.term and not sf.term %}<p class="notice notice--warning" role="alert">{{ se.term }}</p>{% endif %}
+
+  {% if profile.search_terms %}
+  <ul class="item-list" role="list">
+    {% for term in profile.search_terms | sort(attribute="term") %}
+    <li class="item{% if term.status == 'paused' %} item--muted{% endif %}">
+      <span class="item__label">{{ term.term }}</span>
+      <span class="item__tags">
+        {% if term.origin == "suggested" %}<span class="tag">Suggested</span>{% endif %}
+        {% if term.status == "paused" %}<span class="tag">Paused</span>{% endif %}
+      </span>
+      <span class="item__actions">
+        {% if term.status == "paused" %}
+        <button class="button button--small" type="button" hx-post="/profiles/{{ profile.id }}/terms/{{ term.id }}/status"
+                hx-vals='{"status": "active"}' aria-label="Resume {{ term.term }}">Resume</button>
+        {% else %}
+        <button class="button button--small button--ghost" type="button"
+                hx-post="/profiles/{{ profile.id }}/terms/{{ term.id }}/status" hx-vals='{"status": "paused"}'
+                aria-label="Pause {{ term.term }}">Pause</button>
+        {% endif %}
+        <button class="icon-button icon-button--danger" type="button"
+                hx-delete="/profiles/{{ profile.id }}/terms/{{ term.id }}" aria-label="Delete {{ term.term }}">×</button>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="content-section__empty">No search terms yet. Try phrases people would put in a playlist title.</p>
+  {% endif %}
+
+  <form class="inline-form" hx-post="/profiles/{{ profile.id }}/terms" novalidate>
+    <label class="visually-hidden" for="search-term">Search term</label>
+    <input class="input" id="search-term" name="term" value="{{ sf.term or '' }}" maxlength="200" autocomplete="off"
+           placeholder="e.g. late-night electronics"
+           {% if se.term and sf.term %}aria-invalid="true" aria-describedby="search-term-error"{% endif %}>
+    <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+    {% if se.term and sf.term %}<p class="field__error inline-form__error" id="search-term-error">{{ se.term }}</p>{% endif %}
+  </form>
+</section>

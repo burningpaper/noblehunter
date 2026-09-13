@@ -6,20 +6,28 @@
 <nav class="breadcrumb" aria-label="Breadcrumb">
   <a href="/profiles">Profiles</a>
   <span class="breadcrumb__separator" aria-hidden="true">/</span>
-  <span aria-current="page">{{ profile.name }}</span>
+  {% include "profiles/_breadcrumb_current.html" %}
 </nav>
 
 <section class="page-heading rise">
   <p class="eyebrow">Profile</p>
-  <h1 class="page-heading__title">{{ profile.name }}</h1>
+  {% include "profiles/_title.html" %}
 </section>
 
 <div class="split-layout">
-  <section class="card rise" aria-labelledby="settings-heading">
-    <h2 id="settings-heading" class="card__title">Settings</h2>
-    {% include "profiles/_settings_form.html" %}
-  </section>
+  <div class="stack">
+    <section class="card rise" aria-labelledby="settings-heading">
+      <h2 id="settings-heading" class="card__title">Settings</h2>
+      {% include "profiles/_settings_form.html" %}
+    </section>
 
-  {% include "profiles/_status.html" %}
+    {% for section in ["genres", "artists", "anti_signals", "tracks", "terms"] %}
+    {% include "profiles/sections/_" ~ section ~ ".html" %}
+    {% endfor %}
+  </div>
+
+  <div class="sticky-aside">
+    {% include "profiles/_status.html" %}
+  </div>
 </div>
 {% endblock %}

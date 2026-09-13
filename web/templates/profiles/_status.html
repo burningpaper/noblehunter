@@ -1,9 +1,15 @@
-<section class="card profile-status rise" id="profile-status" aria-labelledby="status-heading" aria-live="polite"
-         hx-target="this" hx-swap="outerHTML">
+<section class="card profile-status{% if not oob %} rise{% endif %}" id="profile-status" aria-labelledby="status-heading"
+         aria-live="polite" hx-target="this" hx-swap="outerHTML"{% if oob %} hx-swap-oob="true"{% endif %}>
   <div class="profile-status__header">
     <h2 id="status-heading" class="card__title">Status</h2>
     {% include "profiles/_badge.html" %}
   </div>
+
+  {% if auto_paused %}
+  <p class="notice notice--warning" role="status">
+    This profile was paused because it no longer has everything it needs to run.
+  </p>
+  {% endif %}
 
   {% if problems %}
   <p class="profile-status__lede">

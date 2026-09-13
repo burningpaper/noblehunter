@@ -1,0 +1,45 @@
+{% set sf = section_form or {} %}
+{% set se = section_errors or {} %}
+<section class="card content-section" id="section-anti_signals" aria-labelledby="anti-signals-heading" hx-target="this"
+         hx-swap="outerHTML">
+  <header class="content-section__header">
+    <h2 id="anti-signals-heading" class="card__title">Anti-signals</h2>
+    <p class="content-section__hint">Anything here on a playlist means it's the wrong place. It's rejected outright.</p>
+  </header>
+
+  {% for kind, label in [("artist", "Artists"), ("term", "Terms")] %}
+  {% set signals = profile.anti_signals | selectattr("kind", "equalto", kind) | sort(attribute="value") | list %}
+  <div class="content-section__group">
+    <h3 class="content-section__subheading">{{ label }}</h3>
+    {% if signals %}
+    <ul class="chip-list" role="list">
+      {% for signal in signals %}
+      <li class="chip chip--muted">
+        <span>{{ signal.value }}</span>
+        <button class="chip__remove" type="button" hx-delete="/profiles/{{ profile.id }}/anti-signals/{{ signal.id }}"
+                aria-label="Remove {{ signal.value }}">×</button>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="content-section__empty">None yet.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <form class="inline-form" hx-post="/profiles/{{ profile.id }}/anti-signals" novalidate>
+    <label class="visually-hidden" for="anti-signal-kind">Kind</label>
+    <select class="input input--select" id="anti-signal-kind" name="kind">
+      <option value="artist"{% if sf.kind != "term" %} selected{% endif %}>Artist</option>
+      <option value="term"{% if sf.kind == "term" %} selected{% endif %}>Term</option>
+    </select>
+    <label class="visually-hidden" for="anti-signal-value">Artist or term</label>
+    <input class="input" id="anti-signal-value" name="value" value="{{ sf.value or '' }}" maxlength="200"
+           autocomplete="off" placeholder="e.g. lo-fi study beats"
+           {% if se.value or se.kind %}aria-invalid="true" aria-describedby="anti-signal-error"{% endif %}>
+    <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+    {% if se.value or se.kind %}
+    <p class="field__error inline-form__error" id="anti-signal-error">{{ se.kind or se.value }}</p>
+    {% endif %}
+  </form>
+</section>
