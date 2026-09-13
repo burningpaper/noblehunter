@@ -390,6 +390,15 @@ code {
   }
 }
 
+/* Inside a button the spinner takes no space until a request is in flight, so labels stay centred. */
+.button .htmx-indicator {
+  display: none;
+}
+
+.button.htmx-request .htmx-indicator {
+  display: inline-block;
+}
+
 /* ---- Account navigation ---------------------------------------------------------------- */
 
 .site-nav {
