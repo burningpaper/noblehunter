@@ -108,3 +108,22 @@ def test_connection_url_swaps_credentials_and_keeps_everything_else():
     assert url.database == "neondb"
     assert url.query["sslmode"] == "require"
     assert "ownersecret" not in connection_url_for(base, "noble_web", "x" * 40)
+
+
+def test_password_is_sent_in_plaintext_because_neon_rejects_hashes(engine, fresh_role):
+    """Neon's control plane refuses pre-hashed passwords at commit (XX000: "Neon only supports
+    being given plaintext passwords"), so the generated password is sent as-is over TLS and
+    hashed by the server. Local Postgres accepts hashes, so this checks the SQL actually sent."""
+    from sqlalchemy import event
+
+    sent: list[str] = []
+    with engine.begin() as connection:
+        event.listen(connection, "before_cursor_execute", lambda *args: sent.append(args[2]))
+        password = create_login_role(connection, fresh_role)
+
+    create_statements = [
+        statement for statement in sent if statement.lstrip().upper().startswith("CREATE ROLE")
+    ]
+    assert len(create_statements) == 1
+    assert f"PASSWORD '{password}'" in create_statements[0]
+    assert "SCRAM-SHA-256$" not in create_statements[0]

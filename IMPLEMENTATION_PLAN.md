@@ -101,7 +101,13 @@ Status: Complete.
 ## Stage 1: Foundation
 Goal: Repo skeleton with `core/`, `web/` and `pipeline/` packages and `uv` dependency groups, settings loading, Alembic schema for all tables above, separate Neon roles for web and pipeline, the exclusion module, and a `profile import` CLI that loads a YAML profile into the DB, so pipeline work doesn't wait on the web app.
 Success Criteria: `uv run pytest` passes. Migrations apply cleanly to a Neon branch. Exclusion tests cover handle and email normalisation, freemail domains, the 90-day `no-contact` window, curator-with-outreach, and cross-profile behaviour. Unique constraints make a duplicate digest entry impossible.
-Status: Not Started
+Status: In Progress.
+- ✅ Contact normalisation, settings (`.env` + `.env.local`), profile YAML validation.
+- ✅ Models and first migration (15 tables). The outreach EXCLUDE constraint enforces the 90-day curator rule, and a mutation check confirmed it's load-bearing.
+- ✅ Exclusion rules (verdicts, re-checks, contact and domain blocking) and profile import CLI.
+- ✅ Least-privilege roles: `db create-roles` (SQL-created, SCRAM, credentials to a 0600 file) and `db grant`.
+- ✅ 191 tests against real Postgres 18 in Docker (`scripts/test-db.sh up`).
+- ⏳ Apply the migration to Neon, create `noble_web` and `noble_pipeline`, import the first profile. Awaiting Jarred's go-ahead.
 
 ## Stage 2: Settings web app
 Goal: A polished web app, deployed to Vercel, to create, edit, activate and pause profiles, and to manage genres (ordered), reference artists, anti-signals, tracks and manual search terms. It includes login, a "Run now" button and a pipeline status panel.

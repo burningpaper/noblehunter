@@ -5,6 +5,7 @@ uv run python -m pipeline.cli profile import config/profiles/example.yaml
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -30,6 +31,28 @@ def fail(message: str) -> typer.Exit:
     return typer.Exit(code=1)
 
 
+SECRET_PATTERNS = (
+    (re.compile(r"PASSWORD\s+'[^']*'", re.IGNORECASE), "PASSWORD '****'"),
+    (re.compile(r"SCRAM-SHA-256\$\S+"), "SCRAM-SHA-256$****"),
+    (re.compile(r"(postgres(?:ql)?(?:\+\w+)?://)\S+"), r"\1****"),
+    (re.compile(r"npg_\w+"), "npg_****"),
+)
+
+
+def describe_db_error(error: SQLAlchemyError) -> str:
+    """SQLSTATE and the first line of the server's message, with secret-looking text masked.
+
+    Never includes the SQL statement: for role creation it carries a password.
+    """
+    original = getattr(error, "orig", None) or error
+    first_line = (str(original).splitlines() or [""])[0]
+    for pattern, replacement in SECRET_PATTERNS:
+        first_line = pattern.sub(replacement, first_line)
+    sqlstate = getattr(original, "sqlstate", None)
+    label = f"SQLSTATE {sqlstate}" if sqlstate else type(original).__name__
+    return f"{label}: {first_line}"
+
+
 @profile_app.command("import")
 def import_command(path: Annotated[Path, typer.Argument(help="Path to a profile YAML file.")]) -> None:
     """Create or update a profile from a YAML file."""
@@ -46,7 +69,7 @@ def import_command(path: Annotated[Path, typer.Argument(help="Path to a profile 
             session.commit()
     except SQLAlchemyError as error:
         # Name the failure without echoing connection details.
-        raise fail(f"Database error while importing {config.name!r}: {type(error).__name__}") from None
+        raise fail(f"Database error while importing {config.name!r}: {describe_db_error(error)}") from None
     finally:
         engine.dispose()
 
@@ -76,7 +99,7 @@ def grant_command(
     except (ValueError, LookupError) as error:
         raise fail(str(error)) from None
     except SQLAlchemyError as error:
-        raise fail(f"Database error while granting privileges: {type(error).__name__}") from None
+        raise fail(f"Database error while granting privileges: {describe_db_error(error)}") from None
     finally:
         engine.dispose()
 
@@ -132,7 +155,7 @@ def create_roles_command(
         raise fail(str(error)) from None
     except SQLAlchemyError as error:
         output.unlink(missing_ok=True)
-        raise fail(f"Database error while creating roles: {type(error).__name__}") from None
+        raise fail(f"Database error while creating roles: {describe_db_error(error)}") from None
     finally:
         engine.dispose()
 

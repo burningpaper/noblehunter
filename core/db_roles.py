@@ -1,8 +1,8 @@
 """Least-privilege grants for the web app and pipeline database roles.
 
-The roles themselves are created in the Neon console (so their passwords never pass
-through code or chat). This module then gives each exactly what it needs, run as the
-database owner:
+The roles are created here with SQL, never in the Neon console (which adds roles to
+`neon_superuser` and would make these grants meaningless). Each then gets exactly what
+it needs, run as the database owner:
 
 - web (Vercel, public internet): read everything; manage profile settings, search terms
   and "Run now" requests; record verdicts on outreach and exclusions on curators, column
@@ -21,6 +21,7 @@ from sqlalchemy.engine import make_url
 
 ROLE_NAME = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 PASSWORD_BYTES = 32  # 256 bits of entropy; Neon requires at least 60
+URL_SAFE_PASSWORD = re.compile(r"^[A-Za-z0-9_-]+$")
 MIGRATION_TABLE = "alembic_version"
 
 WEB_EDITABLE_TABLES = (
@@ -44,20 +45,22 @@ def create_login_role(connection: Connection, role: str) -> str:
     """Create a LOGIN role with no special attributes or memberships and return its password.
 
     Must be done with SQL, never in the Neon console: console-created roles join
-    `neon_superuser`. The password is hashed to SCRAM-SHA-256 on this machine, so only
-    the hash is sent to the server (and could ever appear in a statement log).
+    `neon_superuser`. The password is sent as-is: Neon's control plane rejects pre-hashed
+    passwords at commit ("Neon only supports being given plaintext passwords"), so the
+    connection's TLS protects it in transit and the server stores a SCRAM-SHA-256 hash.
     """
     _check_role_name(role)
     if connection.scalar(text("select 1 from pg_roles where rolname = :role"), {"role": role}):
         raise ValueError(f"Role {role!r} already exists; refusing to overwrite its password")
 
     password = generate_password()
-    verifier = _scram_verifier(connection, role, password)
-    # exec_driver_sql, not text(): a SCRAM verifier can contain "=:" which text() would
-    # misread as a bind parameter. Role name is validated; the verifier is base64 and '$'.
+    if not URL_SAFE_PASSWORD.match(password):
+        raise RuntimeError("Generated password contains unexpected characters")
+    # Role name is validated and the password is URL-safe base64, so neither can break out
+    # of the statement. exec_driver_sql keeps SQLAlchemy from parsing it for bind params.
     connection.exec_driver_sql(
         f"CREATE ROLE {role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS "
-        f"PASSWORD '{verifier}'"
+        f"PASSWORD '{password}'"
     )
     return password
 
@@ -82,14 +85,6 @@ def create_app_roles(
         "WEB_DATABASE_URL": connection_url_for(pooled_url, web_role, web_password),
         "PIPELINE_DATABASE_URL": connection_url_for(direct_url, pipeline_role, pipeline_password),
     }
-
-
-def _scram_verifier(connection: Connection, role: str, password: str) -> str:
-    pgconn = connection.connection.driver_connection.pgconn
-    verifier = pgconn.encrypt_password(password.encode(), role.encode(), b"scram-sha-256").decode()
-    if "'" in verifier:
-        raise RuntimeError("Unexpected quote in SCRAM verifier")
-    return verifier
 
 
 def grant_privileges(connection: Connection, web_role: str, pipeline_role: str) -> None:
