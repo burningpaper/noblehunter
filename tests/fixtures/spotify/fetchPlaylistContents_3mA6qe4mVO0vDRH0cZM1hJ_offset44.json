@@ -1,0 +1,1097 @@
+{
+ "data": {
+  "playlistV2": {
+   "__typename": "Playlist",
+   "content": {
+    "__typename": "PlaylistItemsPage",
+    "items": [
+     {
+      "addedAt": {
+       "isoString": "2014-07-24T03:44:30Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Plaid"
+            },
+            "uri": "spotify:artist:5akVqMzdZOdbMYbE4vNZWD"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e026f8029618bdcdefdea605a6b",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d000048516f8029618bdcdefdea605a6b",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b2736f8029618bdcdefdea605a6b",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2014-05-19T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Reachy Prints",
+         "uri": "spotify:album:4nwAU3LuHt6nL5KLqhzw1z"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Plaid"
+           },
+           "uri": "spotify:artist:5akVqMzdZOdbMYbE4vNZWD"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 252175
+        },
+        "mediaType": "AUDIO",
+        "name": "Matin Lunaire",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "614940",
+        "trackNumber": 6,
+        "uri": "spotify:track:55RWy2mGijFGGHFEj9Ez0a"
+       }
+      },
+      "uid": "25b1caef17977204"
+     },
+     {
+      "addedAt": {
+       "isoString": "2014-07-24T03:45:43Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Plaid"
+            },
+            "uri": "spotify:artist:5akVqMzdZOdbMYbE4vNZWD"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e026f8029618bdcdefdea605a6b",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d000048516f8029618bdcdefdea605a6b",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b2736f8029618bdcdefdea605a6b",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2014-05-19T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Reachy Prints",
+         "uri": "spotify:album:4nwAU3LuHt6nL5KLqhzw1z"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Plaid"
+           },
+           "uri": "spotify:artist:5akVqMzdZOdbMYbE4vNZWD"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 1
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 253631
+        },
+        "mediaType": "AUDIO",
+        "name": "Tether",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "320130",
+        "trackNumber": 7,
+        "uri": "spotify:track:6QD4OvAyStnfk6k5XsXLnv"
+       }
+      },
+      "uid": "eaf22efb64273b42"
+     },
+     {
+      "addedAt": {
+       "isoString": "2015-06-05T05:34:27Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Isan"
+            },
+            "uri": "spotify:artist:7a7MvRxJIoVblndypH8XgC"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e029ed31044b9b94123b67a146c",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d000048519ed31044b9b94123b67a146c",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b2739ed31044b9b94123b67a146c",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2004-02-09T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Meet Next Life",
+         "uri": "spotify:album:06NYuCrLGUenhscXgZaSuA"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Isan"
+           },
+           "uri": "spotify:artist:7a7MvRxJIoVblndypH8XgC"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 265946
+        },
+        "mediaType": "AUDIO",
+        "name": "Iron Eyes",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "20463",
+        "trackNumber": 7,
+        "uri": "spotify:track:2mjji3h6tAqGqwgu8yMz07"
+       }
+      },
+      "uid": "66dc92ecc4c06f4f"
+     },
+     {
+      "addedAt": {
+       "isoString": "2015-06-18T07:16:26Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Yimino"
+            },
+            "uri": "spotify:artist:4ZfR36H0qPMwB77F0bjIyF"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e0226e45dbb5d6643e3c05b984f",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d0000485126e45dbb5d6643e3c05b984f",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b27326e45dbb5d6643e3c05b984f",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2010-09-27T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Breaker",
+         "uri": "spotify:album:7tMK1g7JjF5RLSnKZcnpKa"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Yimino"
+           },
+           "uri": "spotify:artist:4ZfR36H0qPMwB77F0bjIyF"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 355146
+        },
+        "mediaType": "AUDIO",
+        "name": "Imp",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "58514",
+        "trackNumber": 10,
+        "uri": "spotify:track:3F3tQ8pM0bQHV60AeGu5eU"
+       }
+      },
+      "uid": "886af3737356c80c"
+     },
+     {
+      "addedAt": {
+       "isoString": "2015-09-23T18:47:23Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Rykard"
+            },
+            "uri": "spotify:artist:1Lv74nSxjs4UMpxaceSclV"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e025ef3f4e2c4f0436e69863095",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d000048515ef3f4e2c4f0436e69863095",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b2735ef3f4e2c4f0436e69863095",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2010-03-10T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Arrive The Radio Beacon",
+         "uri": "spotify:album:7heNFWzf612jUF7YIKzfGk"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Rykard"
+           },
+           "uri": "spotify:artist:1Lv74nSxjs4UMpxaceSclV"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 197834
+        },
+        "mediaType": "AUDIO",
+        "name": "North Cormorant Obscurity",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "2518099",
+        "trackNumber": 8,
+        "uri": "spotify:track:19J954JmVakR1RPFHVeDQx"
+       }
+      },
+      "uid": "ed240579647c1631"
+     },
+     {
+      "addedAt": {
+       "isoString": "2019-04-20T17:34:44Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Aphex Twin"
+            },
+            "uri": "spotify:artist:6kBDZFXuLrZgHnvmPu9NsG"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e02121367720d1f36271f231ede",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d00004851121367720d1f36271f231ede",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b273121367720d1f36271f231ede",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "1994-03-08T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Selected Ambient Works, Vol. II",
+         "uri": "spotify:album:1EHmRVzsyd1KRifjOY79gH"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Aphex Twin"
+           },
+           "uri": "spotify:artist:6kBDZFXuLrZgHnvmPu9NsG"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 464266
+        },
+        "mediaType": "AUDIO",
+        "name": "#3",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "98978450",
+        "trackNumber": 3,
+        "uri": "spotify:track:1D7TUN3EkC5FRJfDY7jZzN"
+       }
+      },
+      "uid": "bde70519016bdee1"
+     },
+     {
+      "addedAt": {
+       "isoString": "2019-04-20T16:11:43Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Kink"
+            },
+            "uri": "spotify:artist:6yCdWsTDt4Dmb5GMZd5QLb"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e02b2882eb2e837bc09c0df9cab",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d00004851b2882eb2e837bc09c0df9cab",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b273b2882eb2e837bc09c0df9cab",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2015-03-23T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Cloud Generator EP",
+         "uri": "spotify:album:78IP0nkTDvjNgEhiQ3vsgk"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Kink"
+           },
+           "uri": "spotify:artist:6yCdWsTDt4Dmb5GMZd5QLb"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 403609
+        },
+        "mediaType": "AUDIO",
+        "name": "Pocket Piano",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "909717",
+        "trackNumber": 3,
+        "uri": "spotify:track:0XU7g6DJ5YbwDrlvrUSbQ7"
+       }
+      },
+      "uid": "3d6271800dccf92e"
+     },
+     {
+      "addedAt": {
+       "isoString": "2015-06-05T05:54:28Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Ochre"
+            },
+            "uri": "spotify:artist:0OmHDBh5styCXDWKwz58Ts"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e02a1d3f404cb0fe78ffcc3f36b",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d00004851a1d3f404cb0fe78ffcc3f36b",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b273a1d3f404cb0fe78ffcc3f36b",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2006-07-10T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Lemodie",
+         "uri": "spotify:album:3j8gUUjoFkpasZppgFqeeu"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Ochre"
+           },
+           "uri": "spotify:artist:0OmHDBh5styCXDWKwz58Ts"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 294000
+        },
+        "mediaType": "AUDIO",
+        "name": "Open Top",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "56345",
+        "trackNumber": 6,
+        "uri": "spotify:track:3iQQYWNi0vcpJ8ZkkgiZoS"
+       }
+      },
+      "uid": "f475e186e19968a8"
+     },
+     {
+      "addedAt": {
+       "isoString": "2015-10-07T05:11:17Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "Kodomo"
+            },
+            "uri": "spotify:artist:57BliIwnAIqKeI4dbAWwaU"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e02d0b68ad316c4fff36746eda2",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d00004851d0b68ad316c4fff36746eda2",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b273d0b68ad316c4fff36746eda2",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2011-06-21T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Frozen In Motion",
+         "uri": "spotify:album:5g8ZG8IRvxAwPzv3JpyZkS"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "Kodomo"
+           },
+           "uri": "spotify:artist:57BliIwnAIqKeI4dbAWwaU"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 393906
+        },
+        "mediaType": "AUDIO",
+        "name": "Decoder",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "1021295",
+        "trackNumber": 2,
+        "uri": "spotify:track:4LG888bzqPoLOM8UroeS5G"
+       }
+      },
+      "uid": "857d5a0148de3f68"
+     },
+     {
+      "addedAt": {
+       "isoString": "2016-03-01T06:52:14Z"
+      },
+      "addedBy": {
+       "data": {
+        "__typename": "User",
+        "avatar": {
+         "sources": [
+          {
+           "height": 64,
+           "url": "https://i.scdn.co/image/ab67757000003b82a5f66be9fe43ddc575a32d3e",
+           "width": 64
+          },
+          {
+           "height": 300,
+           "url": "https://i.scdn.co/image/ab6775700000ee85a5f66be9fe43ddc575a32d3e",
+           "width": 300
+          }
+         ]
+        },
+        "name": "Mimi Taylor",
+        "socialHandle": null,
+        "uri": "spotify:user:1251802306",
+        "username": "1251802306"
+       }
+      },
+      "attributes": [],
+      "itemV2": {
+       "__typename": "TrackResponseWrapper",
+       "data": {
+        "__typename": "Track",
+        "albumOfTrack": {
+         "artists": {
+          "items": [
+           {
+            "profile": {
+             "name": "VHS Head"
+            },
+            "uri": "spotify:artist:4yeeydDo3JBOENa72J7KdV"
+           }
+          ]
+         },
+         "coverArt": {
+          "sources": [
+           {
+            "height": 300,
+            "url": "https://i.scdn.co/image/ab67616d00001e02d434f87553cf8db39797ffca",
+            "width": 300
+           },
+           {
+            "height": 64,
+            "url": "https://i.scdn.co/image/ab67616d00004851d434f87553cf8db39797ffca",
+            "width": 64
+           },
+           {
+            "height": 640,
+            "url": "https://i.scdn.co/image/ab67616d0000b273d434f87553cf8db39797ffca",
+            "width": 640
+           }
+          ]
+         },
+         "date": {
+          "isoString": "2014-05-26T00:00:00Z",
+          "precision": "DAY"
+         },
+         "name": "Persistence of Vision",
+         "uri": "spotify:album:55x6zmaZ15S7a6oCl9Lmw1"
+        },
+        "artists": {
+         "items": [
+          {
+           "profile": {
+            "name": "VHS Head"
+           },
+           "uri": "spotify:artist:4yeeydDo3JBOENa72J7KdV"
+          }
+         ]
+        },
+        "associationsV3": {
+         "audioAssociations": {
+          "__typename": "TrackAudioAssociationPage",
+          "items": []
+         },
+         "videoAssociations": {
+          "totalCount": 0
+         }
+        },
+        "contentRating": {
+         "label": "NONE"
+        },
+        "discNumber": 1,
+        "trackDuration": {
+         "totalMilliseconds": 306848
+        },
+        "mediaType": "AUDIO",
+        "name": "Red Ocean Apocalypse",
+        "playability": {
+         "playable": true,
+         "reason": "PLAYABLE"
+        },
+        "playcount": "49352",
+        "trackNumber": 6,
+        "uri": "spotify:track:0eTFHI2ogUkizdypminoEY"
+       }
+      },
+      "uid": "ebfd5c03b8d11f2e"
+     }
+    ],
+    "pagingInfo": {
+     "limit": 50,
+     "offset": 44
+    },
+    "totalCount": 127
+   }
+  }
+ }
+}
