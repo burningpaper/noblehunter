@@ -13,6 +13,10 @@ MIN_DIGEST_TARGET = 1
 MAX_DIGEST_TARGET = 50
 DEFAULT_DIGEST_TARGET = 20
 
+# Playlists with fewer followers than this aren't worth a pitch (0 means no floor).
+DEFAULT_MIN_FOLLOWERS = 50
+MAX_MIN_FOLLOWERS = 1_000_000
+
 MAX_NAME_LENGTH = 80
 MAX_GENRE_LENGTH = 100
 MAX_ARTIST_LENGTH = 200

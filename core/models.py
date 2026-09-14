@@ -64,6 +64,7 @@ class RejectionReason(StrEnum):
     NOT_REAL = "not-real"
     NO_FIT = "no-fit"
     SPOTIFY_OWNED = "spotify-owned"  # Spotify's own playlists: never pitchable (migration 0002)
+    TOO_SMALL = "too-small"  # fits, but under the profile's follower floor (migration 0003)
 
 
 class SizeBand(StrEnum):
@@ -165,12 +166,17 @@ def created_at_column() -> Mapped[datetime]:
 
 class Profile(Base):
     __tablename__ = "profiles"
-    __table_args__ = (CheckConstraint("digest_target between 1 and 50", name="digest_target"),)
+    __table_args__ = (
+        CheckConstraint("digest_target between 1 and 50", name="digest_target"),
+        CheckConstraint("min_followers >= 0", name="min_followers"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80), unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     digest_target: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
+    # Playlists with fewer followers aren't worth pitching (migration 0003); 0 means no floor.
+    min_followers: Mapped[int] = mapped_column(Integer, default=50, server_default="50")
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

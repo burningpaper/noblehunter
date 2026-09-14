@@ -26,7 +26,7 @@ PERMANENT_VERDICTS = {OutreachStatus.BAD_FIT, OutreachStatus.DEAD}
 
 IN_PROGRESS_STATUSES = {PlaylistStatus.CANDIDATE, PlaylistStatus.QUALIFIED}
 RECHECKABLE_STATUSES = {PlaylistStatus.NO_CONTACT, PlaylistStatus.DIGESTED}
-RECHECKABLE_REJECTIONS = {RejectionReason.NOT_ALIVE, RejectionReason.NO_FIT}
+RECHECKABLE_REJECTIONS = {RejectionReason.NOT_ALIVE, RejectionReason.NO_FIT, RejectionReason.TOO_SMALL}
 
 
 def cooldown_start(today: date) -> date:

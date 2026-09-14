@@ -205,3 +205,13 @@ The 15 leads are genuinely on-genre and alive: IDM, braindance and glitch playli
 - **One curator, many playlists.** arcticdrones appears twice. The digest stage's one-pitch-per-curator rule will matter from day one.
 
 All of this ran with stand-in reference artists. Synman's real list will reshape the fit results, but the dead, off-genre and non-human patterns will hold. The check that counts is a real request to `/health`. Two more housekeeping notes. `vercel link` wrote a `.env.local` holding only a `VERCEL_OIDC_TOKEN`, which is gitignored. And the new `.env*` ignore rule needed a `!.env.example` exception so the template stays tracked.
+
+## 2026-09-14 (morning): A floor under "qualified"
+
+Jarred settled the first gap in one line: under 50 followers isn't worth a pitch. He also wanted the number in the web app, per profile, not buried in code. So `profiles.min_followers` (migration 0003) defaults to 50, and the settings form edits it. It accepts any whole number from 0, meaning no floor, to a million.
+
+The floor applies only after fit. A playlist that fits but is too small gets its own rejection, `too-small`, rather than being lumped in with `no-fit`. The difference matters in 90 days. Small playlists grow, so `too-small` is re-checked like `not-alive`. An anti-signal still vetoes outright, and if no profile fits at all the reason stays `no-fit`, because that is the truer story. Each profile uses its own floor, so a niche profile set to 10 can take a playlist that the main profile turns away.
+
+Leaving the field blank keeps the current value. That way an older form, or a future caller that only renames a profile, can't quietly reset the floor to zero.
+
+The second gap, owners who aren't people, gets no rule of its own. Jarred's view is that a lead with no reachable human is no lead. Stage 6's contact research will mark those `no-contact`, so Chosic and volt.fm drop out for the same reason as an anonymous personal playlist.

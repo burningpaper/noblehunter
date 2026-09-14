@@ -17,6 +17,16 @@
     {% if errors.digest_target %}<p class="field__error" id="profile-target-error">{{ errors.digest_target }}</p>{% endif %}
   </div>
 
+  <div class="field">
+    <label class="field__label" for="profile-min-followers">Minimum followers</label>
+    <input class="input input--narrow" id="profile-min-followers" name="min_followers" type="number"
+           inputmode="numeric" min="0" value="{{ form.min_followers }}"
+           aria-describedby="profile-min-followers-hint{% if errors.min_followers %} profile-min-followers-error{% endif %}"
+           {% if errors.min_followers %}aria-invalid="true"{% endif %}>
+    <p class="field__hint" id="profile-min-followers-hint">Smaller playlists are skipped and looked at again in 90 days. 0 means no floor.</p>
+    {% if errors.min_followers %}<p class="field__error" id="profile-min-followers-error">{{ errors.min_followers }}</p>{% endif %}
+  </div>
+
   <div class="form__actions">
     <button class="button button--primary" type="submit">
       Save

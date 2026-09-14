@@ -19,6 +19,11 @@ Plan for the Curator Discovery Pipeline in `spec.md`, updated with Jarred's deci
 | Digest and verdicts | **Digest page in the web app** with verdict buttons, plus a short morning **email linking to it** | 2026-09-13 |
 | Web login | **Sign in with Google**, restricted to burningpaper@gmail.com | 2026-09-13 |
 | Visual direction | **Dark studio**: near-black ground, one restrained accent, clean sans-serif, generous spacing, subtle motion | 2026-09-13 |
+| Configuration | **Everything is configured in the web app**, per profile (and per search term where it applies). YAML import is only a bootstrap/backup tool; Jarred enters Synman himself | 2026-09-14 |
+| Minimum size | Playlists **under 50 followers aren't worth pitching**. The floor is a per-profile setting (default 50). Too-small playlists are re-checked later, since they can grow | 2026-09-14 |
+| Contactability | **No contactable person, no lead.** Service and automated owners (playlist generators, stats sites, chart accounts) and playlists with no findable contact are dropped | 2026-09-14 |
+| Claude | **Required, not optional.** Stage 6 contact research is an agentic Claude loop (search, follow links, read bios). `ANTHROPIC_API_KEY` goes in `.env.local` on the Mac Mini only | 2026-09-14 |
+| Deploy | Profile editor and pipeline code pushed 2026-09-14 with Jarred's OK | 2026-09-14 |
 | Database roles | `noble_web` and `noble_pipeline` are **created with SQL by `pipeline.cli`, never in the Neon console**. Neon adds console/CLI/API roles to `neon_superuser` (`pg_write_all_data`, `CREATEROLE`, `BYPASSRLS`), which would make least-privilege grants meaningless | 2026-09-13 |
 | Repo / deploy | `github.com/burningpaper/noblehunter` (public, by Jarred's choice). Vercel project `noblehunter` with framework `fastapi`, live at `noblehunter.vercel.app`, Neon linked | 2026-09-13 |
 | Profiles | **Multiple profiles** (e.g. per release or project), each with its own genres, reference artists, anti-signals, tracks and search terms | 2026-09-13 |
@@ -151,12 +156,12 @@ Status: In Progress.
 ## Stage 4: Fetch and parse
 Goal: The Stage 0 fetch approach made production-grade: rate limit, retry then `fetch-failed`, a track ceiling / tail read for huge playlists, and a parser working from trimmed fixtures.
 Success Criteria: Parser tests pass against trimmed fixtures (including >100 tracks and a partial read). A failed fetch doesn't stop the run. The rate limit is verified in a test.
-Status: Not Started
+Status: In Progress — `pipeline/spotify.py` and `pipeline/evaluate.py` built and proven on a 149-playlist live batch.
 
 ## Stage 5: Qualify
 Goal: Per playlist: alive, real, reachable, size band. Per profile: fit (reference-artist overlap, anti-signal hard reject, LLM genre match) written to `playlist_profile_fit`.
 Success Criteria: A hand-labelled set of ~40 playlists per real profile gets ≥85% agreement and zero anti-signal false passes. Heuristic edge cases are unit-tested. Yield is re-measured with real reference artists.
-Status: Not Started
+Status: In Progress — alive/real/fit heuristics and the per-profile minimum-followers floor (default 50, `too-small`, migration 0003) are done. The LLM genre match and the labelled-set check wait for the real Synman profile.
 
 ## Stage 6: Contact resolution
 Goal: A code-first ladder, then the budgeted agent, producing A/B/C contacts with route type and source URL.

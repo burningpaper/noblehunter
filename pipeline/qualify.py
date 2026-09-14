@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from core.models import AntiSignalKind, PlaylistStatus, Profile, RejectionReason, SizeBand
+from core.profile_rules import DEFAULT_MIN_FOLLOWERS
 from core.text import normalize_text
 from pipeline.spotify import PlaylistData, Track
 
@@ -37,6 +38,7 @@ SUSPICIOUS_MAX_TRACKS = 20
 
 TOP_TIER_REFERENCE_ARTISTS = 3
 TIER_TOP, TIER_ACCEPTABLE, TIER_WEAK, TIER_REJECTED = "top", "acceptable", "weak", "rejected"
+TIER_TOO_SMALL = "too-small"  # would fit, but below the profile's follower floor
 QUALIFYING_TIERS = frozenset({TIER_TOP, TIER_ACCEPTABLE})
 
 PAY_TO_PLAY_PATTERNS = tuple(
@@ -59,6 +61,7 @@ class ProfileRules:
     reference_artists: tuple[str, ...] = ()
     anti_artists: tuple[str, ...] = ()
     anti_terms: tuple[str, ...] = ()
+    min_followers: int = DEFAULT_MIN_FOLLOWERS
 
     @classmethod
     def from_profile(cls, profile: Profile) -> "ProfileRules":
@@ -68,6 +71,7 @@ class ProfileRules:
             reference_artists=tuple(artist.display_name for artist in profile.reference_artists),
             anti_artists=tuple(s.value for s in profile.anti_signals if s.kind == AntiSignalKind.ARTIST),
             anti_terms=tuple(s.value for s in profile.anti_signals if s.kind == AntiSignalKind.TERM),
+            min_followers=profile.min_followers,
         )
 
 
@@ -158,6 +162,9 @@ def assess_fit(data: PlaylistData, rules: ProfileRules) -> FitCheck:
     else:
         tier = TIER_WEAK
     score = min(1.0, len(present) / TOP_TIER_REFERENCE_ARTISTS)
+    if tier in QUALIFYING_TIERS and (data.followers or 0) < rules.min_followers:
+        # Unknown follower counts count as too small: we can't show a pitch is worth it.
+        tier = TIER_TOO_SMALL
     return FitCheck(tier, score, present, ())
 
 
@@ -194,9 +201,11 @@ def _rejection_reason(
         return RejectionReason.NOT_REAL
     if not liveness.alive:
         return RejectionReason.NOT_ALIVE
-    if not any(fit.qualifies for fit in fits.values()):
-        return RejectionReason.NO_FIT
-    return None
+    if any(fit.qualifies for fit in fits.values()):
+        return None
+    if any(fit.tier == TIER_TOO_SMALL for fit in fits.values()):
+        return RejectionReason.TOO_SMALL
+    return RejectionReason.NO_FIT
 
 
 def _contains_phrase(data: PlaylistData, phrase: str) -> bool:

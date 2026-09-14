@@ -52,7 +52,7 @@ def profile_page(request: Request, profile_id: int, db: DbSession) -> Response:
     profile = _profile_or_404(db, profile_id)
     context = {
         "profile": profile,
-        "form": {"name": profile.name, "digest_target": profile.digest_target},
+        "form": _settings_form(profile),
         "errors": {},
         "saved": False,
         "problems": activation_problems(profile),
@@ -62,21 +62,32 @@ def profile_page(request: Request, profile_id: int, db: DbSession) -> Response:
 
 @router.post("/{profile_id}/settings")
 def save_settings(
-    request: Request, profile_id: int, db: DbSession, name: FormText = "", digest_target: FormText = ""
+    request: Request,
+    profile_id: int,
+    db: DbSession,
+    name: FormText = "",
+    digest_target: FormText = "",
+    min_followers: FormText = "",
 ) -> Response:
     profile = _profile_or_404(db, profile_id)
     try:
-        update_profile_settings(db, profile_id, name, digest_target)
+        # A blank floor (e.g. an older form) keeps the current value.
+        update_profile_settings(db, profile_id, name, digest_target, min_followers.strip() or None)
         db.commit()
     except ProfileValidationError as error:
-        context = {"profile": profile, "form": {"name": name, "digest_target": digest_target}}
-        return templates.TemplateResponse(
-            request, "profiles/_settings_form.html", {**context, "errors": error.errors, "saved": False}, 422
-        )
-    context = {"profile": profile, "form": {"name": profile.name, "digest_target": profile.digest_target}}
-    return templates.TemplateResponse(
-        request, "profiles/_settings_form.html", {**context, "errors": {}, "saved": True}
-    )
+        typed = {"name": name, "digest_target": digest_target, "min_followers": min_followers}
+        context = {"profile": profile, "form": typed, "errors": error.errors, "saved": False}
+        return templates.TemplateResponse(request, "profiles/_settings_form.html", context, 422)
+    context = {"profile": profile, "form": _settings_form(profile), "errors": {}, "saved": True}
+    return templates.TemplateResponse(request, "profiles/_settings_form.html", context)
+
+
+def _settings_form(profile: Profile) -> dict:
+    return {
+        "name": profile.name,
+        "digest_target": profile.digest_target,
+        "min_followers": profile.min_followers,
+    }
 
 
 @router.post("/{profile_id}/activate")

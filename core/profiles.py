@@ -15,6 +15,7 @@ from core.models import Profile, SearchTermStatus
 from core.profile_rules import (
     DEFAULT_DIGEST_TARGET,
     MAX_DIGEST_TARGET,
+    MAX_MIN_FOLLOWERS,
     MAX_NAME_LENGTH,
     MIN_ACTIVE_SEARCH_TERMS,
     MIN_DIGEST_TARGET,
@@ -57,7 +58,7 @@ def get_profile(session: Session, profile_id: int) -> Profile:
 
 
 def create_profile(session: Session, name: str, digest_target: int | str = DEFAULT_DIGEST_TARGET) -> Profile:
-    clean_name, target = _validated_settings(session, name, digest_target, profile_id=None)
+    clean_name, target, _ = _validated_settings(session, name, digest_target, profile_id=None)
     profile = Profile(name=clean_name, digest_target=target)
     session.add(profile)
     session.flush()
@@ -65,10 +66,18 @@ def create_profile(session: Session, name: str, digest_target: int | str = DEFAU
 
 
 def update_profile_settings(
-    session: Session, profile_id: int, name: str, digest_target: int | str
+    session: Session,
+    profile_id: int,
+    name: str,
+    digest_target: int | str,
+    min_followers: int | str | None = None,
 ) -> Profile:
+    """Rename and retune a profile. Leaving `min_followers` out keeps the current floor."""
     profile = get_profile(session, profile_id)
-    profile.name, profile.digest_target = _validated_settings(session, name, digest_target, profile_id)
+    clean_name, target, floor = _validated_settings(session, name, digest_target, profile_id, min_followers)
+    profile.name, profile.digest_target = clean_name, target
+    if floor is not None:
+        profile.min_followers = floor
     session.flush()
     return profile
 
@@ -136,8 +145,12 @@ def _problems(genres: int, artists: int, tracks: int, active_terms: int) -> list
 
 
 def _validated_settings(
-    session: Session, name: str, digest_target: int | str, profile_id: int | None
-) -> tuple[str, int]:
+    session: Session,
+    name: str,
+    digest_target: int | str,
+    profile_id: int | None,
+    min_followers: int | str | None = None,
+) -> tuple[str, int, int | None]:
     errors: dict[str, str] = {}
     clean_name = " ".join(str(name).split())
     if not clean_name:
@@ -151,9 +164,15 @@ def _validated_settings(
     if target is None:
         errors["digest_target"] = f"Choose a whole number between {MIN_DIGEST_TARGET} and {MAX_DIGEST_TARGET}"
 
+    floor = None
+    if min_followers is not None:
+        floor = _parse_min_followers(min_followers)
+        if floor is None:
+            errors["min_followers"] = f"Choose a whole number of followers from 0 to {MAX_MIN_FOLLOWERS:,}"
+
     if errors:
         raise ProfileValidationError(errors)
-    return clean_name, target
+    return clean_name, target, floor
 
 
 def _parse_digest_target(value: int | str) -> int | None:
@@ -162,6 +181,14 @@ def _parse_digest_target(value: int | str) -> int | None:
         return None
     number = int(text)
     return number if MIN_DIGEST_TARGET <= number <= MAX_DIGEST_TARGET else None
+
+
+def _parse_min_followers(value: int | str) -> int | None:
+    text = str(value).strip()
+    if not text.isdigit():
+        return None
+    number = int(text)
+    return number if number <= MAX_MIN_FOLLOWERS else None
 
 
 def _name_taken(session: Session, name: str, profile_id: int | None) -> bool:
