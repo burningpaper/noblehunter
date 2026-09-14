@@ -23,6 +23,7 @@ from core.profiles import (
     update_profile_settings,
 )
 from web.db import get_db
+from web.runs import panel_context
 from web.templating import templates
 
 router = APIRouter(prefix="/profiles")
@@ -32,8 +33,13 @@ FormText = Annotated[str, Form()]
 
 @router.get("")
 def profiles_page(request: Request, db: DbSession) -> Response:
-    context = {"profiles": list_profiles(db), "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET}}
-    return templates.TemplateResponse(request, "profiles/list.html", {**context, "errors": {}})
+    context = {
+        "profiles": list_profiles(db),
+        "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET},
+        "errors": {},
+        **panel_context(db),
+    }
+    return templates.TemplateResponse(request, "profiles/list.html", context)
 
 
 @router.post("")

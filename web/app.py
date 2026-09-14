@@ -24,6 +24,7 @@ from web.db import build_engine
 from web.guard import install_guard
 from web.profile_contents import router as profile_contents_router
 from web.profiles import router as profiles_router
+from web.runs import router as runs_router
 from web.sessions import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS
 from web.settings import WebSettings, load_web_settings
 from web.suggestions import router as suggestions_router
@@ -68,6 +69,7 @@ def create_app(
     app.include_router(profiles_router)
     app.include_router(profile_contents_router)
     app.include_router(suggestions_router)
+    app.include_router(runs_router)
 
     @app.get("/health")
     def health() -> dict:

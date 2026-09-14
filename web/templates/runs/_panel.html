@@ -1,0 +1,64 @@
+{# The Mac Mini runner at a glance. It re-reads itself every 30 seconds, so a "Run now" can be
+   watched from queued to running to finished without reloading. #}
+{% set status = run_status_view %}
+<section class="card run-status{% if not refreshed %} rise{% endif %}" id="run-status" aria-labelledby="run-status-heading"
+         hx-get="/runs/status" hx-trigger="every 30s" hx-swap="outerHTML">
+  <div class="run-status__header">
+    <h2 id="run-status-heading" class="card__title">Nightly runs</h2>
+    {% if status.runner_online %}
+    <span class="runner-badge runner-badge--online">Runner online</span>
+    {% else %}
+    <span class="runner-badge runner-badge--offline">Runner offline</span>
+    {% endif %}
+  </div>
+
+  {% for warning in status.warnings %}
+  <p class="notice notice--warning">{{ warning }}</p>
+  {% endfor %}
+
+  <dl class="run-facts">
+    {% if status.current_run %}
+    <div class="run-facts__row">
+      <dt>Running now</dt>
+      <dd>started {{ relative_time(status.current_run.started_at, now) }}</dd>
+    </div>
+    {% endif %}
+    {% if status.last_run %}
+    <div class="run-facts__row">
+      <dt>Last run</dt>
+      <dd{% if status.last_run.status == "failed" %} class="run-facts__failed"{% endif %}>
+        {{ "failed" if status.last_run.status == "failed" else "finished" }} {{ relative_time(status.last_run.finished_at, now) }}
+      </dd>
+    </div>
+    {% endif %}
+    {% if status.next_scheduled_at %}
+    <div class="run-facts__row">
+      <dt>Next nightly run</dt>
+      <dd>{{ relative_time(status.next_scheduled_at, now) }}</dd>
+    </div>
+    {% endif %}
+    {% if status.runner_seen_at %}
+    <div class="run-facts__row">
+      <dt>Runner last checked in</dt>
+      <dd>{{ relative_time(status.runner_seen_at, now) }}</dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  <div class="form__actions">
+    {% if status.open_request %}
+    <p class="run-status__note" role="status">
+      {% if status.open_request.status == "claimed" %}Starting on the Mac Mini…{% else %}Queued. The runner picks it up within a minute.{% endif %}
+    </p>
+    {% elif status.current_run %}
+    <p class="run-status__note">A run is in progress.</p>
+    {% else %}
+    <button class="button button--primary" type="button" hx-post="/runs/request" hx-target="#run-status"
+            hx-swap="outerHTML" hx-disabled-elt="this">
+      Run now
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+    <p class="run-status__note">Searches for every active profile.</p>
+    {% endif %}
+  </div>
+</section>

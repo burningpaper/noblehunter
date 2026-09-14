@@ -152,6 +152,11 @@ class RunRequestStatus(StrEnum):
     FAILED = "failed"
 
 
+class WorkerState(StrEnum):
+    IDLE = "idle"
+    RUNNING = "running"
+
+
 def one_of(column: str, allowed: type[StrEnum], name: str | None = None) -> CheckConstraint:
     values = ", ".join(f"'{member.value}'" for member in allowed)
     return CheckConstraint(f"{column} in ({values})", name=name or column)
@@ -471,3 +476,19 @@ class RunRequest(Base):
     )
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)  # why a failed request failed (migration 0004)
+
+
+class WorkerStatus(Base):
+    """The Mac Mini runner's check-in: one row (id 1), rewritten every minute and during runs."""
+
+    __tablename__ = "worker_status"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"), one_of("state", WorkerState))
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    hostname: Mapped[str] = mapped_column(String(255))
+    state: Mapped[str] = mapped_column(String(20))
+    current_run_id: Mapped[int | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    next_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

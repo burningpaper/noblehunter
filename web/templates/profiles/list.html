@@ -51,9 +51,12 @@
     {% endif %}
   </section>
 
-  <aside class="card rise" aria-labelledby="new-profile-heading">
-    <h2 id="new-profile-heading" class="card__title">New profile</h2>
-    {% include "profiles/_create_form.html" %}
-  </aside>
+  <div class="stack">
+    {% include "runs/_panel.html" %}
+    <aside class="card rise" aria-labelledby="new-profile-heading">
+      <h2 id="new-profile-heading" class="card__title">New profile</h2>
+      {% include "profiles/_create_form.html" %}
+    </aside>
+  </div>
 </div>
 {% endblock %}

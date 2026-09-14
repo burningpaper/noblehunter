@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from core.profile_contents import search_requests_per_night
+from core.run_status import relative_time
 from core.suggestions import PLACEHOLDERS, SECTIONS
 from web.sessions import SESSION_CSRF, current_user
 
@@ -24,3 +25,4 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR, context_processors=[auth_co
 templates.env.globals["search_requests_per_night"] = search_requests_per_night
 templates.env.globals["suggestion_labels"] = SECTIONS
 templates.env.globals["suggestion_placeholders"] = PLACEHOLDERS
+templates.env.globals["relative_time"] = relative_time

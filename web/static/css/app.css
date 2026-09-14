@@ -1170,6 +1170,106 @@ code {
   justify-content: flex-end;
 }
 
+/* ---- Nightly runs ---------------------------------------------------------------------- */
+
+.run-status {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.run-status__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.run-status__header .card__title {
+  margin-bottom: 0;
+}
+
+.run-status .notice {
+  margin-bottom: 0;
+}
+
+.runner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.125rem var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 550;
+}
+
+.runner-badge::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.runner-badge--online {
+  color: var(--color-success);
+  border-color: rgb(114 221 144 / 0.35);
+}
+
+.runner-badge--online::before {
+  animation: pulse 2.4s var(--ease-out) infinite;
+}
+
+.runner-badge--offline {
+  color: var(--color-warning);
+  border-color: rgb(245 196 81 / 0.35);
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(114 221 144 / 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 0.4rem rgb(114 221 144 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(114 221 144 / 0);
+  }
+}
+
+.run-facts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.run-facts__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.run-facts dt {
+  color: var(--color-text-muted);
+}
+
+.run-facts dd {
+  margin: 0;
+  text-align: right;
+}
+
+.run-facts__failed {
+  color: var(--color-danger);
+}
+
+.run-status__note {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
 /* ---- Small screens: keep the header on one line ---------------------------------------- */
 
 .wordmark,

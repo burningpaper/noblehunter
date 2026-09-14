@@ -58,11 +58,12 @@ def run_pipeline(
             )
             session.commit()
         evaluation = evaluate_candidates(session, fetcher, run=run, today=today, now=now, limit=fetch_limit)
-        finish_run(session, run, now=now, error=BLOCKED if evaluation.blocked else None)
+        # `now` is when the run started (it anchors the liveness checks); the finish time is real time.
+        finish_run(session, run, error=BLOCKED if evaluation.blocked else None)
         session.commit()
     except Exception as error:
         session.rollback()
-        finish_run(session, run, now=now, error=f"{type(error).__name__}: {error}")
+        finish_run(session, run, error=f"{type(error).__name__}: {error}")
         session.commit()
         raise
 

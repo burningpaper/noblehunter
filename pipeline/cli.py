@@ -6,6 +6,9 @@ uv run python -m pipeline.cli profile import config/profiles/example.yaml
 
 import os
 import re
+import signal
+import socket
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -14,7 +17,7 @@ from typing import Annotated
 
 import httpx
 import typer
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -27,9 +30,11 @@ from pipeline.nightly import describe_run, run_pipeline
 from pipeline.report import format_report, qualified_playlists
 from pipeline.search import BraveProvider, SearchProvider, SerperProvider
 from pipeline.settings import PipelineSettings, load_pipeline_settings
+from pipeline.worker import PipelineRunner, configure_logging, local_schedule, run_forever, tick
 
 SEARCH_TIMEOUT_SECONDS = 20
 DEFAULT_REPORT_LIMIT = 50
+WORKER_LOG_DIR = Path.home() / "Library" / "Logs" / "noble-hunter"
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Noble Hunter pipeline tools.")
 profile_app = typer.Typer(no_args_is_help=True, help="Manage artist profiles.")
@@ -229,6 +234,55 @@ def run_command(
         raise fail(str(error)) from None
     except SQLAlchemyError as error:
         raise fail(f"Database error during the run: {describe_db_error(error)}") from None
+    finally:
+        engine.dispose()
+
+
+@app.command("worker")
+def worker_command(
+    once: Annotated[bool, typer.Option(help="Check in, do at most one run, then exit.")] = False,
+    check: Annotated[bool, typer.Option(help="Only check the settings and the database, then exit.")] = False,
+) -> None:
+    """The nightly runner: checks in every minute, runs "Run now" requests and the 02:00 nightly run."""
+    try:
+        settings = load_pipeline_settings()
+        database_url = settings.sqlalchemy_url()
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
+
+    engine = create_engine(database_url, pool_pre_ping=True)
+    try:
+        if check:
+            with engine.connect() as connection:
+                connection.execute(text("select 1 from worker_status limit 1"))
+            typer.echo("Settings and database look good.")
+            return
+
+        typer.echo(f"Logging to {configure_logging(WORKER_LOG_DIR)}")
+        runner = PipelineRunner(
+            engine,
+            open_http=lambda: httpx.Client(timeout=SEARCH_TIMEOUT_SECONDS),
+            open_spotify=open_spotify_client,
+            providers_for=lambda http: build_search_providers(settings, http),
+        )
+        if once:
+            with Session(engine) as session:
+                result = tick(
+                    session,
+                    runner=runner,
+                    clock=lambda: datetime.now(UTC),
+                    hostname=socket.gethostname(),
+                    schedule=local_schedule(),
+                )
+            typer.echo(result.action if result.error is None else f"{result.action}: {result.error}")
+            return
+
+        stop = threading.Event()
+        for signal_number in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(signal_number, lambda *_: stop.set())
+        run_forever(engine, runner, stop=stop)
+    except SQLAlchemyError as error:
+        raise fail(f"Database error: {describe_db_error(error)}") from None
     finally:
         engine.dispose()
 
