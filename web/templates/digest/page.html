@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Digest{% if view.digest_date %} · {{ view.digest_date.strftime("%-d %B %Y") }}{% endif %} · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="page-heading rise">
+  <p class="eyebrow">Digest</p>
+  <h1 class="page-heading__title">
+    {% if view.digest_date %}{{ view.digest_date.strftime("%A %-d %B") }}{% else %}Your digest{% endif %}
+  </h1>
+  {% if view.total %}
+  <p class="page-heading__lede">
+    {{ view.total }} {{ "curator" if view.total == 1 else "curators" }} to pitch. Record what you did with each one,
+    so nobody comes round again too soon.
+  </p>
+  {% endif %}
+  {% if view.earlier_date or view.later_date %}
+  <nav class="digest-nav" aria-label="Other nights">
+    {% if view.earlier_date %}
+    <a class="button button--ghost button--small" href="/digest/{{ view.earlier_date.isoformat() }}">← {{ view.earlier_date.strftime("%-d %b") }}</a>
+    {% endif %}
+    {% if view.later_date %}
+    <a class="button button--ghost button--small" href="/digest/{{ view.later_date.isoformat() }}">{{ view.later_date.strftime("%-d %b") }} →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</section>
+
+{% if not view.digest_date %}
+<div class="card empty-state rise">
+  <h2 class="empty-state__title">No digest yet</h2>
+  <p class="empty-state__body">
+    The first one appears after a run finds curators you can reach. Start one with Run now on the Profiles page.
+  </p>
+</div>
+{% else %}
+  {% if view.short %}
+  <p class="notice notice--warning digest-short" role="status">
+    Only {{ view.total }} tonight, fewer than 10. A short, honest list beats one padded with weak leads.
+  </p>
+  {% elif not view.total %}
+  <div class="card empty-state rise">
+    <h2 class="empty-state__title">Nothing on this night</h2>
+  </div>
+  {% endif %}
+
+  {% for group in view.profiles %}
+  <section class="digest-group" aria-labelledby="digest-group-{{ loop.index }}">
+    <h2 class="digest-group__title" id="digest-group-{{ loop.index }}">
+      {{ group.profile_name }} <span class="digest-group__count">{{ group.entries | length }}</span>
+    </h2>
+    <ol class="digest-list" role="list">
+      {% for entry in group.entries %}
+      <li class="digest-list__item">{% include "digest/_entry.html" %}</li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endfor %}
+
+  {% if view.counts %}
+  <section class="card digest-counts" aria-labelledby="digest-counts-heading">
+    <h2 id="digest-counts-heading" class="card__title">The night in numbers</h2>
+    <dl class="run-facts">
+      {% for count in view.counts %}
+      <div class="run-facts__row">
+        <dt>{{ count.label }}</dt>
+        <dd>{{ count.count_out }} of {{ count.count_in }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

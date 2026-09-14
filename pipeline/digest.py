@@ -12,6 +12,8 @@ Each entry gets a brief from Claude. If Claude can't write one, a plain template
 instead, so a flaky API never costs Jarred his morning list. Entries are committed one at a
 time and their playlists marked `digested`, with the outreach table's 90-day constraint as
 the backstop. Running again the same day only tops the digest up.
+
+Which contact to use comes from `core.contact_routes`, the same rule the digest page shows.
 """
 
 import logging
@@ -25,6 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from core.contact_routes import best_contact
 from core.exclusion import curator_is_eligible
 from core.models import (
     Confidence,
@@ -51,8 +54,8 @@ CONTACT_SCORES = {Confidence.A: 1.0, Confidence.B: 0.6}
 SIZE_SCORES = {"under-500": 0.4, "500-2k": 0.8, "2k-10k": 1.0, "10k-plus": 0.7}
 UNKNOWN_SIZE_SCORE = 0.5
 RECENCY_WINDOW_DAYS = 60
-ROUTE_PREFERENCE = ("email", "submission-form", "instagram", "x", "bluesky", "other")
-ROUTE_LABELS = {
+# How a route reads in a sentence ("Reach them by Instagram DM: ...").
+ROUTE_PHRASES = {
     "email": "email",
     "submission-form": "their submission form",
     "instagram": "Instagram DM",
@@ -149,7 +152,7 @@ def template_brief(request: BriefRequest) -> Brief:
     ]
     if request.description:
         parts.append(f"In their words: “{_clip(request.description)}”")
-    route = ROUTE_LABELS.get(request.contact_route_type, request.contact_route_type)
+    route = ROUTE_PHRASES.get(request.contact_route_type, request.contact_route_type)
     parts.append(f"Reach them by {route}: {request.contact_value}.")
 
     if request.tracks and request.reference_artists:
@@ -180,7 +183,7 @@ def _ranked_candidates(session: Session, today: date, now: datetime) -> list[_Ca
         curator_id = playlist.curator_id
         if curator_id not in eligible:
             eligible[curator_id] = curator_is_eligible(session, curator_id, today)
-        contact = _best_contact(session, curator_id) if eligible[curator_id] else None
+        contact = best_contact(session, curator_id) if eligible[curator_id] else None
         if contact is not None:
             reachable.append((playlist, profile, fit, contact))
 
@@ -191,18 +194,6 @@ def _ranked_candidates(session: Session, today: date, now: datetime) -> list[_Ca
     ]
     ranked.sort(key=lambda candidate: (-candidate.score, candidate.playlist.spotify_id))
     return ranked
-
-
-def _best_contact(session: Session, curator_id: int) -> Contact | None:
-    contacts = session.scalars(
-        select(Contact).where(Contact.curator_id == curator_id, Contact.confidence.in_(CONTACT_SCORES))
-    ).all()
-    return min(contacts, key=_contact_preference, default=None)
-
-
-def _contact_preference(contact: Contact) -> tuple:
-    route_rank = ROUTE_PREFERENCE.index(contact.route_type) if contact.route_type in ROUTE_PREFERENCE else 99
-    return (-CONTACT_SCORES[contact.confidence], route_rank, contact.id)
 
 
 def _score(

@@ -20,6 +20,7 @@
     </a>
     {% if current_user %}
     <nav class="site-nav" aria-label="Main">
+      <a class="site-nav__link" href="/digest">Digest</a>
       <a class="site-nav__link" href="/profiles">Profiles</a>
       <span class="user-chip">
         {% if current_user.picture %}

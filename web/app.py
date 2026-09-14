@@ -22,6 +22,7 @@ from web.auth import IdentityProvider, google_provider
 from web.auth import router as auth_router
 from web.budget import router as budget_router
 from web.db import build_engine
+from web.digest import router as digest_router
 from web.guard import install_guard
 from web.profile_contents import router as profile_contents_router
 from web.profiles import router as profiles_router
@@ -67,6 +68,7 @@ def create_app(
     app.state.identity_provider = identity_provider or google_provider(settings)
     app.state.suggester = suggester or _claude_suggester(settings)
     app.include_router(auth_router)
+    app.include_router(digest_router)
     app.include_router(profiles_router)
     app.include_router(profile_contents_router)
     app.include_router(suggestions_router)

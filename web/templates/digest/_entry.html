@@ -1,0 +1,53 @@
+{# One curator to pitch. The verdict buttons swap this card back in with its new status. #}
+<article class="card digest-entry{% if entry.status != 'new' %} digest-entry--decided{% endif %}"
+         id="entry-{{ entry.outreach_id }}" aria-labelledby="entry-{{ entry.outreach_id }}-title">
+  <header class="digest-entry__header">
+    <h3 class="digest-entry__title" id="entry-{{ entry.outreach_id }}-title">
+      <a href="{{ entry.playlist_url }}" target="_blank" rel="noopener noreferrer">{{ entry.playlist_name }}</a>
+    </h3>
+    {% if entry.status != "new" %}
+    <span class="tag tag--status">{{ verdict_labels.get(entry.status, entry.status) }}</span>
+    {% endif %}
+  </header>
+
+  <p class="digest-entry__meta">
+    <span>{{ entry.curator_name }}</span>
+    {% if entry.followers is not none %}<span>{{ "{:,}".format(entry.followers) }} followers</span>{% endif %}
+    {% if entry.days_since_last_add is not none %}
+    <span>updated {% if entry.days_since_last_add == 0 %}today{% else %}{{ entry.days_since_last_add }} {{ "day" if entry.days_since_last_add == 1 else "days" }} ago{% endif %}</span>
+    {% endif %}
+    {% if entry.reference_artists %}<span>{{ entry.reference_artists | join(", ") }}</span>{% endif %}
+  </p>
+
+  {% if entry.contact_value %}
+  <p class="digest-entry__contact">
+    <span class="digest-entry__route">{{ entry.route_label }}</span>
+    {% if entry.contact_href %}
+    <a href="{{ entry.contact_href }}" target="_blank" rel="noopener noreferrer">{{ entry.contact_value }}</a>
+    {% else %}
+    <span>{{ entry.contact_value }}</span>
+    {% endif %}
+    {% if entry.confidence %}
+    <span class="tag" title="{{ 'Stated by the curator' if entry.confidence == 'A' else 'Matched with corroboration' }}">{{ entry.confidence }}</span>
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <p class="digest-entry__brief">{{ entry.brief }}</p>
+  {% if entry.angle %}
+  <p class="digest-entry__angle"><span class="digest-entry__angle-label">Angle</span> {{ entry.angle }}</p>
+  {% endif %}
+
+  {% if verdict_error %}<p class="field__error" role="alert">{{ verdict_error }}</p>{% endif %}
+  <div class="digest-entry__verdicts" role="group" aria-label="What did you do with {{ entry.playlist_name }}?">
+    {% for value, label in verdict_choices %}
+    <button class="button button--small {{ 'button--primary' if entry.status == value else 'button--ghost' }}" type="button"
+            hx-post="/outreach/{{ entry.outreach_id }}/verdict" hx-vals='{"verdict": "{{ value }}"}'
+            hx-target="#entry-{{ entry.outreach_id }}" hx-swap="outerHTML" hx-disabled-elt="this"
+            aria-pressed="{{ 'true' if entry.status == value else 'false' }}">
+      {{ label }}
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+    {% endfor %}
+  </div>
+</article>
