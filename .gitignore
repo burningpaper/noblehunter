@@ -21,3 +21,6 @@ spike/*.log
 .vercel
 .env*
 !.env.example
+
+# Claude Code: local permissions stay on this machine
+.claude/settings.local.json
