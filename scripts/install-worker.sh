@@ -74,6 +74,12 @@ install_agent() {
 PLIST_XML
 
   launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+  # bootout returns before the old runner has exited, and a runner stopped mid-run takes a while
+  # to close its browser. Loading the new one too soon fails with "Bootstrap failed: 5".
+  for _ in $(seq 1 60); do
+    launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+    sleep 1
+  done
   launchctl bootstrap "$DOMAIN" "$PLIST"
   echo "Installed and started."
   echo "Logs: $LOG_DIR/worker.log"
