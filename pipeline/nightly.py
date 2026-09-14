@@ -1,4 +1,4 @@
-"""One pipeline run: discover for the active profiles, then fetch and judge the candidates.
+"""One pipeline run: discover for the active profiles, fetch and judge the candidates, then the later stages.
 
 The run record is created first and committed straight away, so even a run that crashes in
 its first minute leaves a trace. Each profile's discovery is committed as it finishes, and
@@ -6,10 +6,15 @@ evaluation commits per playlist. If anything unexpected goes wrong, the run is m
 with the error, and the error is raised again so nothing hides it. Being blocked by Spotify
 isn't a crash, but it still marks the run failed: the web app's status panel should say so.
 
+The later stages (contact research, then the digest) are handed in by the caller and run after
+evaluation, in order, each committing its own work. They run even when Spotify pushed back,
+because they don't need Spotify. A failing stage fails the run, but the night's earlier work
+stays.
+
 Asking for a specific profile that isn't active is refused before a run is even recorded.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -27,11 +32,22 @@ BLOCKED = "Spotify pushed back (blocked); the run stopped early and the rest sta
 
 
 @dataclass(frozen=True)
+class StageReport:
+    name: str
+    lines: tuple[str, ...]
+
+
+# A later stage is called as stage(session, run=run, today=today, now=now) and says what it did.
+Stage = Callable[..., StageReport]
+
+
+@dataclass(frozen=True)
 class RunReport:
     run_id: int
     discoveries: tuple[DiscoverySummary, ...]
     evaluation: EvaluationSummary
     profile_names: dict[int, str]
+    stages: tuple[StageReport, ...] = ()
 
 
 def run_pipeline(
@@ -44,6 +60,7 @@ def run_pipeline(
     now: datetime,
     profile_id: int | None = None,
     fetch_limit: int | None = None,
+    stages: Sequence[Stage] = (),
 ) -> RunReport:
     profiles = _profiles_to_discover(session, profile_id)
     names = {profile.id: profile.name for profile in profiles}
@@ -58,6 +75,10 @@ def run_pipeline(
             )
             session.commit()
         evaluation = evaluate_candidates(session, fetcher, run=run, today=today, now=now, limit=fetch_limit)
+        stage_reports = []
+        for stage in stages:
+            stage_reports.append(stage(session, run=run, today=today, now=now))
+            session.commit()
         # `now` is when the run started (it anchors the liveness checks); the finish time is real time.
         finish_run(session, run, error=BLOCKED if evaluation.blocked else None)
         session.commit()
@@ -68,7 +89,11 @@ def run_pipeline(
         raise
 
     return RunReport(
-        run_id=run.id, discoveries=tuple(discoveries), evaluation=evaluation, profile_names=names
+        run_id=run.id,
+        discoveries=tuple(discoveries),
+        evaluation=evaluation,
+        profile_names=names,
+        stages=tuple(stage_reports),
     )
 
 
@@ -94,6 +119,10 @@ def describe_run(report: RunReport) -> str:
     if evaluation.blocked:
         lines.append(BLOCKED)
     lines.extend(f"  {error}" for error in evaluation.errors)
+
+    for stage in report.stages:
+        lines.append(f"\n{stage.name}")
+        lines.extend(f"  {line}" for line in stage.lines)
     return "\n".join(lines)
 
 

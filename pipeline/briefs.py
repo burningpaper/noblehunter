@@ -101,7 +101,8 @@ def _details(request: BriefRequest) -> str:
     else:
         activity = f"last track added {request.days_since_last_add} days ago"
     tracks = "\n".join(
-        f"- {title}: {description}" if description else f"- {title}" for title, description in request.tracks
+        f"- “{title}” (sounds like: {description})" if description else f"- “{title}”"
+        for title, description in request.tracks
     )
     contact = f"{request.contact_route_type} {request.contact_value}"
     if request.contact_note:

@@ -20,6 +20,8 @@ class PipelineSettings(BaseSettings):
 
     serper_api_key: SecretStr
     brave_api_key: SecretStr
+    # Contact research and briefs need it; `pipeline.cli run` and the worker refuse to start without it.
+    anthropic_api_key: SecretStr | None = None
     pipeline_database_url: SecretStr | None = None
     database_url_unpooled: SecretStr | None = None
     database_url: SecretStr | None = None

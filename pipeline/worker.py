@@ -310,7 +310,7 @@ def run_lock(engine: Engine) -> Iterator[bool]:
 
 
 class PipelineRunner:
-    """Take the lock, keep checking in, open search and Spotify, and run the pipeline."""
+    """Take the lock, keep checking in, open search and Spotify, and run the pipeline with its stages."""
 
     def __init__(
         self,
@@ -319,27 +319,32 @@ class PipelineRunner:
         open_http: Callable[[], AbstractContextManager],
         open_spotify: Callable[[], AbstractContextManager],
         providers_for: Callable[[object], list],
+        stages_for: Callable[[object], list],
     ):
         self.engine = engine
         self.open_http = open_http
         self.open_spotify = open_spotify
         self.providers_for = providers_for
+        self.stages_for = stages_for
 
     def __call__(self, session: Session, *, trigger: str, profile_id: int | None) -> int:
         with run_lock(self.engine) as acquired:
             if not acquired:
                 raise RunInProgress("Another run is already in progress")
-            with keep_checking_in(self.engine), self.open_http() as http, self.open_spotify() as spotify:
-                now = datetime.now(UTC)
-                report = run_pipeline(
-                    session,
-                    providers=self.providers_for(http),
-                    fetcher=spotify,
-                    trigger=trigger,
-                    today=now.date(),
-                    now=now,
-                    profile_id=profile_id,
-                )
+            with keep_checking_in(self.engine), self.open_http() as http:
+                stages = self.stages_for(http)  # before Chromium starts, so a missing key fails fast
+                with self.open_spotify() as spotify:
+                    now = datetime.now(UTC)
+                    report = run_pipeline(
+                        session,
+                        providers=self.providers_for(http),
+                        fetcher=spotify,
+                        trigger=trigger,
+                        today=now.date(),
+                        now=now,
+                        profile_id=profile_id,
+                        stages=stages,
+                    )
         logger.info("%s", describe_run(report))
         return report.run_id
 

@@ -20,6 +20,7 @@ from core.settings import MissingSettingError
 from core.suggestions import ClaudeSuggester, Suggester
 from web.auth import IdentityProvider, google_provider
 from web.auth import router as auth_router
+from web.budget import router as budget_router
 from web.db import build_engine
 from web.guard import install_guard
 from web.profile_contents import router as profile_contents_router
@@ -70,6 +71,7 @@ def create_app(
     app.include_router(profile_contents_router)
     app.include_router(suggestions_router)
     app.include_router(runs_router)
+    app.include_router(budget_router)
 
     @app.get("/health")
     def health() -> dict:

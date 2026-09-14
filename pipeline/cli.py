@@ -26,15 +26,22 @@ from core.models import Profile
 from core.profile_config import ProfileConfigError, load_profile_config
 from core.profile_import import import_profile
 from core.settings import MissingSettingError, load_settings
-from pipeline.nightly import describe_run, run_pipeline
+from pipeline.briefs import ClaudeBriefWriter
+from pipeline.nightly import Stage, describe_run, run_pipeline
 from pipeline.report import format_report, qualified_playlists
+from pipeline.research_agent import ClaudeResearchAgent
 from pipeline.search import BraveProvider, SearchProvider, SerperProvider
 from pipeline.settings import PipelineSettings, load_pipeline_settings
+from pipeline.stages import digest_stage, research_stage
+from pipeline.web import PageFetcher, WebSearch
 from pipeline.worker import PipelineRunner, configure_logging, local_schedule, run_forever, tick
 
 SEARCH_TIMEOUT_SECONDS = 20
 DEFAULT_REPORT_LIMIT = 50
 WORKER_LOG_DIR = Path.home() / "Library" / "Logs" / "noble-hunter"
+MISSING_ANTHROPIC_KEY = (
+    "ANTHROPIC_API_KEY is not set. Contact research and the digest need it: add it to .env.local."
+)
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Noble Hunter pipeline tools.")
 profile_app = typer.Typer(no_args_is_help=True, help="Manage artist profiles.")
@@ -190,6 +197,20 @@ def build_search_providers(settings: PipelineSettings, client: httpx.Client) -> 
     ]
 
 
+def build_claude_stages(settings: PipelineSettings, client: httpx.Client) -> list[Stage]:
+    """Contact research, then the digest. Both need Claude. Tests replace this with fakes."""
+    if settings.anthropic_api_key is None:
+        raise MissingSettingError(MISSING_ANTHROPIC_KEY)
+    api_key = settings.anthropic_api_key.get_secret_value()
+    pages = PageFetcher(client)
+    search = WebSearch(settings.serper_api_key.get_secret_value(), client)
+    agent = ClaudeResearchAgent.from_api_key(api_key, pages=pages, search=search)
+    return [
+        research_stage(pages=pages, agent=agent),
+        digest_stage(writer=ClaudeBriefWriter.from_api_key(api_key)),
+    ]
+
+
 @contextmanager
 def open_spotify_client() -> Iterator:
     """Headless Chromium for Spotify. Imported lazily so other commands never need Playwright."""
@@ -206,7 +227,7 @@ def run_command(
         int | None, typer.Option(min=1, help="Fetch and judge at most this many candidates.")
     ] = None,
 ) -> None:
-    """Discover playlists for active profiles, then fetch and judge the candidates."""
+    """Discover, fetch and judge playlists, research curators' contacts, and build the digest."""
     try:
         settings = load_pipeline_settings()
         database_url = settings.sqlalchemy_url()
@@ -218,18 +239,25 @@ def run_command(
     try:
         with Session(engine) as session:
             profile_id = _profile_id_by_name(session, profile) if profile else None
-            with httpx.Client(timeout=SEARCH_TIMEOUT_SECONDS) as http, open_spotify_client() as spotify:
-                report = run_pipeline(
-                    session,
-                    providers=build_search_providers(settings, http),
-                    fetcher=spotify,
-                    trigger="manual",
-                    today=now.date(),
-                    now=now,
-                    profile_id=profile_id,
-                    fetch_limit=fetch_limit,
-                )
+            with httpx.Client(timeout=SEARCH_TIMEOUT_SECONDS) as http:
+                stages = build_claude_stages(
+                    settings, http
+                )  # before Chromium starts, so a missing key fails fast
+                with open_spotify_client() as spotify:
+                    report = run_pipeline(
+                        session,
+                        providers=build_search_providers(settings, http),
+                        fetcher=spotify,
+                        trigger="manual",
+                        today=now.date(),
+                        now=now,
+                        profile_id=profile_id,
+                        fetch_limit=fetch_limit,
+                        stages=stages,
+                    )
         typer.echo(describe_run(report))
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
     except (LookupError, ValueError) as error:
         raise fail(str(error)) from None
     except SQLAlchemyError as error:
@@ -253,8 +281,11 @@ def worker_command(
     engine = create_engine(database_url, pool_pre_ping=True)
     try:
         if check:
+            if settings.anthropic_api_key is None:
+                raise fail(MISSING_ANTHROPIC_KEY)
             with engine.connect() as connection:
                 connection.execute(text("select 1 from worker_status limit 1"))
+                connection.execute(text("select 1 from app_settings limit 1"))
             typer.echo("Settings and database look good.")
             return
 
@@ -264,6 +295,7 @@ def worker_command(
             open_http=lambda: httpx.Client(timeout=SEARCH_TIMEOUT_SECONDS),
             open_spotify=open_spotify_client,
             providers_for=lambda http: build_search_providers(settings, http),
+            stages_for=lambda http: build_claude_stages(settings, http),
         )
         if once:
             with Session(engine) as session:

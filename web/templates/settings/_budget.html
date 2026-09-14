@@ -1,0 +1,23 @@
+{# The nightly Claude budget. Swaps itself back in after saving, so a mistake is explained right here. #}
+<section class="card budget" id="claude-budget" aria-labelledby="claude-budget-heading">
+  <h2 id="claude-budget-heading" class="card__title">Claude budget</h2>
+  <form class="form" hx-post="/settings/claude-budget" hx-target="#claude-budget" hx-swap="outerHTML"
+        hx-disabled-elt="find button" novalidate>
+    <div class="field">
+      <label class="field__label" for="claude-budget-input">Nightly limit</label>
+      <div class="budget__row">
+        <span class="budget__currency" aria-hidden="true">$</span>
+        <input class="input input--narrow" id="claude-budget-input" name="budget" inputmode="decimal"
+               value="{{ budget_form }}" autocomplete="off"
+               aria-describedby="claude-budget-hint{% if budget_error %} claude-budget-error{% endif %}"
+               {% if budget_error %}aria-invalid="true"{% endif %}>
+        <button class="button" type="submit">Save <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+        {% if budget_saved %}<p class="form__saved" role="status">Saved</p>{% endif %}
+      </div>
+      <p class="field__hint" id="claude-budget-hint">
+        Contact research and briefs stop spending when a night reaches this, in US dollars. Research that's left over waits for the next night.
+      </p>
+      {% if budget_error %}<p class="field__error" id="claude-budget-error">{{ budget_error }}</p>{% endif %}
+    </div>
+  </form>
+</section>

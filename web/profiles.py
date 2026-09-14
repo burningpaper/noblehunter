@@ -22,6 +22,7 @@ from core.profiles import (
     set_profile_active,
     update_profile_settings,
 )
+from web.budget import budget_context
 from web.db import get_db
 from web.runs import panel_context
 from web.templating import templates
@@ -38,6 +39,7 @@ def profiles_page(request: Request, db: DbSession) -> Response:
         "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET},
         "errors": {},
         **panel_context(db),
+        **budget_context(db),
     }
     return templates.TemplateResponse(request, "profiles/list.html", context)
 

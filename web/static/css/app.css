@@ -1270,6 +1270,24 @@ code {
   font-size: var(--text-sm);
 }
 
+/* ---- Claude budget --------------------------------------------------------------------- */
+
+.budget__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.budget__currency {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.budget .form__saved {
+  animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
 /* ---- Small screens: keep the header on one line ---------------------------------------- */
 
 .wordmark,

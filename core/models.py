@@ -492,3 +492,21 @@ class WorkerStatus(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     next_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppSettings(Base):
+    """Settings for the whole app, edited in the web app: one row (id 1), created on first save."""
+
+    __tablename__ = "app_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_row"),
+        CheckConstraint("nightly_claude_budget_usd between 0 and 50", name="nightly_claude_budget"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    nightly_claude_budget_usd: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2), default=Decimal("2.00"), server_default="2.00"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

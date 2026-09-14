@@ -1,6 +1,8 @@
-"""`pipeline.cli run` and `report`, wired through replaceable search and Spotify builders.
+"""`pipeline.cli run`, `report` and `worker --check`, wired through replaceable builders.
 
-These commit real rows to the test database, so they wipe the pipeline tables before and after.
+Search, Spotify and the Claude stages are all swapped for fakes, so no test here reaches the
+network or spends money, even though the repo's `.env.local` holds real keys. These tests
+commit real rows to the test database, so they wipe the pipeline tables before and after.
 """
 
 from contextlib import contextmanager
@@ -13,12 +15,14 @@ from typer.testing import CliRunner
 
 import pipeline.cli as cli
 from core.profiles import create_profile, set_profile_active
+from pipeline.nightly import StageReport
 from pipeline.search import QUERY_PREFIX, ProviderResult, SearchHit
 from pipeline.spotify import PlaylistData, Track
 from tests.conftest import TEST_DATABASE_URL
 from tests.profile_helpers import add_contents
 
 PLAYLIST_ID = "1" * 22
+REAL_BUILD_CLAUDE_STAGES = getattr(cli, "build_claude_stages", None)
 
 
 def wipe(engine) -> None:
@@ -57,12 +61,17 @@ class FakeFetcher:
         )
 
 
+def fake_research_stage(session, *, run, today, now) -> StageReport:
+    return StageReport("Contact research", ("3 researched · 2 reachable",))
+
+
 @pytest.fixture
 def pipeline_env(engine, monkeypatch):
     monkeypatch.setenv("PIPELINE_DATABASE_URL", TEST_DATABASE_URL)
     monkeypatch.setenv("SERPER_API_KEY", "serper-test-key")
     monkeypatch.setenv("BRAVE_API_KEY", "brave-test-key")
     monkeypatch.setattr(cli, "build_search_providers", lambda settings, client: [FakeProvider()])
+    monkeypatch.setattr(cli, "build_claude_stages", lambda settings, client: [fake_research_stage])
 
     @contextmanager
     def fake_spotify():
@@ -87,6 +96,14 @@ def test_run_command_discovers_evaluates_and_summarises(pipeline_env):
     assert "qualified 1" in result.output
 
 
+def test_run_command_reports_the_claude_stages(pipeline_env):
+    result = CliRunner().invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0, result.output
+    assert "Contact research" in result.output
+    assert "3 researched" in result.output
+
+
 def test_report_command_lists_what_the_run_found(pipeline_env):
     CliRunner().invoke(cli.app, ["run"])
 
@@ -107,3 +124,25 @@ def test_run_without_search_keys_is_a_readable_error(pipeline_env, monkeypatch, 
     assert result.exit_code == 1
     assert "SERPER_API_KEY" in result.output
     assert "Traceback" not in result.output
+
+
+def test_run_without_an_anthropic_key_is_a_readable_error(pipeline_env, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "build_claude_stages", REAL_BUILD_CLAUDE_STAGES)
+
+    result = CliRunner().invoke(cli.app, ["run"])
+
+    assert result.exit_code == 1
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_worker_check_insists_on_the_anthropic_key(pipeline_env, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    result = CliRunner().invoke(cli.app, ["worker", "--check"])
+
+    assert result.exit_code == 1
+    assert "ANTHROPIC_API_KEY" in result.output

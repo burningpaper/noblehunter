@@ -32,6 +32,7 @@ WEB_EDITABLE_TABLES = (
     "profile_tracks",
     "search_terms",
     "run_requests",
+    "app_settings",
 )
 WEB_OUTREACH_COLUMNS = ("status", "status_changed_at", "pitched_at", "notes")
 WEB_CURATOR_COLUMNS = ("excluded_at", "exclusion_reason")
