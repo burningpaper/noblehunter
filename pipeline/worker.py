@@ -265,11 +265,14 @@ def keep_checking_in(engine: Engine, every: float = BEAT_SECONDS) -> Iterator[No
         thread.join(timeout=every)
 
 
-def recover_abandoned(session: Session, now: datetime) -> int:
-    """Close out work a crashed or killed runner left open. Returns how many rows were closed."""
-    cutoff = now - STALE_RUN_AFTER
+def recover_abandoned(session: Session, now: datetime, *, stale_after: timedelta = STALE_RUN_AFTER) -> int:
+    """Close out work a crashed or killed runner left open. Returns how many rows were closed.
+
+    Anything that hasn't beaten for `stale_after` counts as abandoned.
+    """
+    cutoff = now - stale_after
     stale_runs = session.scalars(
-        select(Run).where(Run.status == RunStatus.RUNNING, Run.heartbeat_at < cutoff)
+        select(Run).where(Run.status == RunStatus.RUNNING, Run.heartbeat_at <= cutoff)
     ).all()
     for run in stale_runs:
         finish_run(
@@ -280,13 +283,24 @@ def recover_abandoned(session: Session, now: datetime) -> int:
         )
     stale_requests = session.scalars(
         select(RunRequest).where(
-            RunRequest.status == RunRequestStatus.CLAIMED, RunRequest.claimed_at < cutoff
+            RunRequest.status == RunRequestStatus.CLAIMED, RunRequest.claimed_at <= cutoff
         )
     ).all()
     for request in stale_requests:
         _close_request(request, now, error="The runner stopped before this run finished.")
     session.flush()
     return len(stale_runs) + len(stale_requests)
+
+
+def recover_at_startup(session: Session, engine: Engine, now: datetime) -> int:
+    """Close what an earlier runner left open when it was killed.
+
+    A killed run's heartbeat can be seconds old. But if no runner holds the run lock, nothing can
+    really be running, so everything still marked as running is closed now, not ten minutes later.
+    """
+    with run_lock(engine) as nobody_running:
+        stale_after = timedelta(0) if nobody_running else STALE_RUN_AFTER
+        return recover_abandoned(session, now, stale_after=stale_after)
 
 
 @contextmanager
@@ -359,7 +373,7 @@ def run_forever(
 ) -> None:
     hostname = hostname or socket.gethostname()
     with Session(engine) as session:
-        closed = recover_abandoned(session, datetime.now(UTC))
+        closed = recover_at_startup(session, engine, datetime.now(UTC))
         session.commit()
     if closed:
         logger.warning("Closed %s run(s) or request(s) left open by an earlier runner", closed)
