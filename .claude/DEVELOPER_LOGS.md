@@ -215,3 +215,11 @@ The floor applies only after fit. A playlist that fits but is too small gets its
 Leaving the field blank keeps the current value. That way an older form, or a future caller that only renames a profile, can't quietly reset the floor to zero.
 
 The second gap, owners who aren't people, gets no rule of its own. Jarred's view is that a lead with no reachable human is no lead. Stage 6's contact research will mark those `no-contact`, so Chosic and volt.fm drop out for the same reason as an anonymous personal playlist.
+
+## 2026-09-14 (mid-morning): Reading the description first, and a schema that got ahead of itself
+
+Contact research starts where the spec says the answers most often are: the curator's own description. `pipeline/contact_extract.py` pulls out emails (including `demos [at] label [dot] com`), handles, form links and Discord invites. It also lists the links worth following next. Its tests use formats copied from last night's real playlists, among them `Submissions: PlaylistsByElise@gmail.com`, `Follow @laguerradelasgalaxiasvinyl on Instagram` and `Submit tracks for consideration: https://discord.gg/...`. There are traps too: `record label @ www.site.org` is a website, not a handle, and `v0.2` is not a domain.
+
+Order is the trick. Emails are found and blanked out first, so `gmail.com` never shows up as a site to visit. Web addresses come next, so `instagram.com/name` becomes a route and isn't read twice. Handles are last, and they only count when the text names the platform. A bare `@someone` could belong to anyone, anywhere. None of the 12 playlists that qualified last night had contact details in its description, so most of the yield will depend on the research agent, just as the spec warned.
+
+Meanwhile production broke, predictably. Adding the Anthropic SDK changed `pyproject.toml`, and pushing that commit also pushed the unpushed minimum-followers change. Vercel deployed both, but Neon was still at migration 0001, so every Profiles page failed with `column profiles.min_followers does not exist`. Querying Neon as the web role showed the same error. The rule, now written down: **apply migrations to Neon before any push that changes the models.** A cheap future guard would have `/health` compare the database's revision with the code's head, so a gap like this shows up before anyone clicks.

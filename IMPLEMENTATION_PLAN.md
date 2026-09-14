@@ -166,7 +166,11 @@ Status: In Progress — alive/real/fit heuristics and the per-profile minimum-fo
 ## Stage 6: Contact resolution
 Goal: A code-first ladder, then the budgeted agent, producing A/B/C contacts with route type and source URL.
 Success Criteria: The budget is enforced in tests (10 fetches / 60 s). On ~20 labelled playlists, no C contact is graded A or B, and every A has a source URL containing the contact. The spend cap aborts gracefully.
-Status: Not Started
+Status: In Progress
+- 6a — Extract routes from text (spec step 1): emails (including `[at]`/`[dot]`), platform-hinted handles, social URLs, form links, and links worth following. Pure functions, grounded in real descriptions from the first batch. A route the curator states in their own description is grade A.
+- 6b — Follow links (spec step 2) under the shared budget: fetch Linktree, personal and label pages over plain HTTP and run 6a on them.
+- 6c — The research agent (spec step 3): a manual Claude tool-use loop whose only tools are budgeted `search` (Serper/Brave) and `fetch_page`. It returns graded routes with source URLs, or "no person". Service accounts end up here as no-contact. Needs the nightly spend cap (open question 5).
+- 6d — The owner's other playlists (spec step 4), then record `contacts` or mark the playlist `no-contact`. Wire into `pipeline.cli run`.
 
 ## Stage 7: Brief, rank and digest — first real digest
 Goal: Per-profile briefs that name the profile's reference artists and closest track, weighted ranking, a digest grouped by profile with a stage-count footer, and `outreach` rows with status `new`.
