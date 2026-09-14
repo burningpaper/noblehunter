@@ -192,7 +192,15 @@ def _ranked_candidates(session: Session, today: date, now: datetime) -> list[_Ca
         _Candidate(playlist, profile, fit, contact, _score(playlist, fit, contact, best_fit, now))
         for playlist, profile, fit, contact in reachable
     ]
-    ranked.sort(key=lambda candidate: (-candidate.score, candidate.playlist.spotify_id))
+    # Playlists carrying the profile's reference artists always come first (Jarred, 2026-09-14);
+    # genre and Claude matches fill in behind them, in score order.
+    ranked.sort(
+        key=lambda candidate: (
+            not candidate.fit.reference_artists_present,
+            -candidate.score,
+            candidate.playlist.spotify_id,
+        )
+    )
     return ranked
 
 

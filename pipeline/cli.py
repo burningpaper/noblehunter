@@ -11,7 +11,7 @@ import socket
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -27,7 +27,9 @@ from core.profile_config import ProfileConfigError, load_profile_config
 from core.profile_import import import_profile
 from core.settings import MissingSettingError, load_settings
 from pipeline.briefs import ClaudeBriefWriter
+from pipeline.fit_judge import ClaudeFitJudge, FitJudge
 from pipeline.nightly import Stage, describe_run, run_pipeline
+from pipeline.recheck import requeue_recent_rejections
 from pipeline.report import format_report, qualified_playlists
 from pipeline.research_agent import ClaudeResearchAgent
 from pipeline.search import BraveProvider, SearchProvider, SerperProvider
@@ -211,6 +213,13 @@ def build_claude_stages(settings: PipelineSettings, client: httpx.Client) -> lis
     ]
 
 
+def build_fit_judge(settings: PipelineSettings) -> FitJudge:
+    """Claude's check on playlists with none of the reference artists. Tests replace this with a fake."""
+    if settings.anthropic_api_key is None:
+        raise MissingSettingError(MISSING_ANTHROPIC_KEY)
+    return ClaudeFitJudge.from_api_key(settings.anthropic_api_key.get_secret_value())
+
+
 @contextmanager
 def open_spotify_client() -> Iterator:
     """Headless Chromium for Spotify. Imported lazily so other commands never need Playwright."""
@@ -240,9 +249,9 @@ def run_command(
         with Session(engine) as session:
             profile_id = _profile_id_by_name(session, profile) if profile else None
             with httpx.Client(timeout=SEARCH_TIMEOUT_SECONDS) as http:
-                stages = build_claude_stages(
-                    settings, http
-                )  # before Chromium starts, so a missing key fails fast
+                # Built before Chromium starts, so a missing key fails fast.
+                stages = build_claude_stages(settings, http)
+                fit_judge = build_fit_judge(settings)
                 with open_spotify_client() as spotify:
                     report = run_pipeline(
                         session,
@@ -254,6 +263,7 @@ def run_command(
                         profile_id=profile_id,
                         fetch_limit=fetch_limit,
                         stages=stages,
+                        fit_judge=fit_judge,
                     )
         typer.echo(describe_run(report))
     except MissingSettingError as error:
@@ -264,6 +274,36 @@ def run_command(
         raise fail(f"Database error during the run: {describe_db_error(error)}") from None
     finally:
         engine.dispose()
+
+
+@app.command("recheck")
+def recheck_command(
+    reason: Annotated[
+        str, typer.Option(help="The rejection reason to re-check: no-fit, too-small or not-alive.")
+    ] = "no-fit",
+    days: Annotated[int, typer.Option(min=1, help="Only playlists rejected in the last this many days.")] = 7,
+) -> None:
+    """Put recent rejections back in the queue, for when the rules that rejected them change."""
+    try:
+        database_url = load_pipeline_settings().sqlalchemy_url()
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
+
+    engine = create_engine(database_url)
+    try:
+        with Session(engine) as session:
+            since = datetime.now(UTC) - timedelta(days=days)
+            count = requeue_recent_rejections(session, reason=reason, since=since)
+            session.commit()
+    except ValueError as error:
+        raise fail(str(error)) from None
+    except SQLAlchemyError as error:
+        raise fail(f"Database error while re-queueing: {describe_db_error(error)}") from None
+    finally:
+        engine.dispose()
+
+    plural = "playlist" if count == 1 else "playlists"
+    typer.echo(f"Put {count} {plural} rejected as “{reason}” back in the queue for the next run.")
 
 
 @app.command("worker")
@@ -296,6 +336,7 @@ def worker_command(
             open_spotify=open_spotify_client,
             providers_for=lambda http: build_search_providers(settings, http),
             stages_for=lambda http: build_claude_stages(settings, http),
+            fit_judge_for=lambda: build_fit_judge(settings),
         )
         if once:
             with Session(engine) as session:

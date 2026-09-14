@@ -356,12 +356,14 @@ class PipelineRunner:
         open_spotify: Callable[[], AbstractContextManager],
         providers_for: Callable[[object], list],
         stages_for: Callable[[object], list],
+        fit_judge_for: Callable[[], object],
     ):
         self.engine = engine
         self.open_http = open_http
         self.open_spotify = open_spotify
         self.providers_for = providers_for
         self.stages_for = stages_for
+        self.fit_judge_for = fit_judge_for
 
     def __call__(self, session: Session, *, trigger: str, profile_id: int | None) -> int:
         with run_lock(self.engine) as acquired:
@@ -380,6 +382,7 @@ class PipelineRunner:
                         now=now,
                         profile_id=profile_id,
                         stages=stages,
+                        fit_judge=self.fit_judge_for(),
                     )
         logger.info("%s", describe_run(report))
         return report.run_id

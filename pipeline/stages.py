@@ -3,7 +3,7 @@
 `run_pipeline` knows nothing about Claude. It calls each stage with the session, the run and
 the night's dates, and prints the lines the stage reports. Research reads the nightly budget
 from the web app's settings as it starts, so the limit Jarred sets that evening is the one
-that applies.
+that applies. It gets only what's left of that budget after evaluation's fit checks.
 
 The run report says plainly what happened: how many curators were researched and reached,
 what Claude cost against the budget, what was left for another night, and whether a profile
@@ -27,11 +27,12 @@ SHORT_DIGEST = 10
 
 def research_stage(*, pages: PageSource, agent: ResearchAgent | None) -> Callable[..., StageReport]:
     def stage(session: Session, *, run: Run, today: date, now: datetime) -> StageReport:
-        budget = nightly_claude_budget(session)
+        spent_so_far = run.llm_spend_usd or Decimal(0)
+        left = max(Decimal(0), nightly_claude_budget(session) - spent_so_far)
         summary = run_research(
-            session, pages=pages, agent=agent, run=run, today=today, now=now, spend_cap_usd=budget
+            session, pages=pages, agent=agent, run=run, today=today, now=now, spend_cap_usd=left
         )
-        return StageReport("Contact research", tuple(_research_lines(summary, budget)))
+        return StageReport("Contact research", tuple(_research_lines(summary, left)))
 
     return stage
 
@@ -44,11 +45,11 @@ def digest_stage(*, writer: BriefWriter | None) -> Callable[..., StageReport]:
     return stage
 
 
-def _research_lines(summary: ResearchSummary, budget: Decimal) -> list[str]:
+def _research_lines(summary: ResearchSummary, budget_left: Decimal) -> list[str]:
     lines = [
         f"{summary.researched} researched · {summary.reachable} reachable · "
         f"{summary.no_contact} no contact · {summary.already_reachable} already reachable",
-        f"Claude spend ${summary.spend_usd:.2f} of ${budget:.2f}",
+        f"Claude spend ${summary.spend_usd:.2f} of ${budget_left:.2f} left",
     ]
     if summary.deferred:
         lines.append(f"{summary.deferred} left for another night")

@@ -13,18 +13,25 @@ Failures are handled by what they mean, not by what went wrong technically:
 - `blocked`: Spotify is pushing back. Stop the whole run immediately, leave the rest queued,
   and don't make it worse.
 
+When a fit judge is given, a playlist that would be rejected as no fit gets one more chance.
+If it's alive and real, and for some profile it has none of the reference artists, names none
+of the genres and trips no anti-signal, Claude judges its sound. Those checks count toward the
+night's Claude budget and stop once it's spent.
+
 If no profile is active there's nothing to judge against, so nothing is fetched. Otherwise
 every candidate would be wrongly rejected as no fit.
 """
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
+from core.app_settings import nightly_claude_budget
 from core.models import (
     Curator,
     Playlist,
@@ -35,7 +42,16 @@ from core.models import (
     RejectionReason,
     Run,
 )
-from pipeline.qualify import SPOTIFY_OWNERS, ProfileRules, Verdict, judge
+from pipeline.fit_judge import FitJudge, FitJudgeError
+from pipeline.qualify import (
+    SPOTIFY_OWNERS,
+    TIER_WEAK,
+    ProfileRules,
+    Verdict,
+    judge,
+    judged_fit,
+    verdict_with_fits,
+)
 from pipeline.runs import record_stage
 from pipeline.spotify import PlaylistData, SpotifyFetchError
 
@@ -56,6 +72,41 @@ class EvaluationSummary:
     rejected: int
     blocked: bool
     errors: tuple[str, ...]
+    claude_checks: int = 0
+    claude_fits: int = 0
+    spend_usd: Decimal = Decimal(0)
+
+
+@dataclass
+class _ClaudeFitChecks:
+    """Asks Claude about playlists nothing cheaper could place, until the night's budget is spent."""
+
+    judge: FitJudge | None
+    budget: Decimal
+    checks: int = 0
+    fits: int = 0
+    spend: Decimal = Decimal(0)
+
+    def second_chance(
+        self, data: PlaylistData, verdict: Verdict, rules: list[ProfileRules], errors: list[str]
+    ) -> Verdict:
+        if self.judge is None or verdict.rejection_reason != RejectionReason.NO_FIT:
+            return verdict
+        fits = dict(verdict.fits)
+        for profile_rules in rules:
+            if fits[profile_rules.profile_id].tier != TIER_WEAK or self.spend >= self.budget:
+                continue
+            self.checks += 1
+            try:
+                opinion = self.judge.judge(data, profile_rules)
+            except FitJudgeError as error:
+                errors.append(f"{data.spotify_id}: {error}")
+                continue
+            self.spend += opinion.spend_usd
+            if opinion.fits:
+                self.fits += 1
+                fits[profile_rules.profile_id] = judged_fit(data, profile_rules, opinion.genre_tags)
+        return verdict_with_fits(data, verdict, fits)
 
 
 def evaluate_candidates(
@@ -66,12 +117,14 @@ def evaluate_candidates(
     today: date,
     now: datetime,
     limit: int | None = None,
+    fit_judge: FitJudge | None = None,
 ) -> EvaluationSummary:
     rules = _active_profile_rules(session)
     if not rules:
         return EvaluationSummary(0, 0, 0, 0, blocked=False, errors=(NO_ACTIVE_PROFILES,))
 
     candidate_ids = _candidate_ids(session, limit)
+    claude = _ClaudeFitChecks(fit_judge, nightly_claude_budget(session) if fit_judge else Decimal(0))
     fetched = failed = qualified = rejected = 0
     blocked = False
     errors: list[str] = []
@@ -91,7 +144,7 @@ def evaluate_candidates(
             continue
 
         fetched += 1
-        verdict = judge(data, rules, today)
+        verdict = claude.second_chance(data, judge(data, rules, today), rules, errors)
         _store_playlist(session, playlist, data, verdict, now)
         _store_fits(session, spotify_id, verdict, rules, now)
         if verdict.status == PlaylistStatus.QUALIFIED:
@@ -100,17 +153,32 @@ def evaluate_candidates(
             rejected += 1
         session.commit()
 
+    run.llm_spend_usd = (run.llm_spend_usd or Decimal(0)) + claude.spend
     record_stage(session, run, "fetch", count_in=len(candidate_ids), count_out=fetched)
     record_stage(session, run, "qualify", count_in=fetched, count_out=qualified)
     session.commit()
-    return EvaluationSummary(fetched, failed, qualified, rejected, blocked, tuple(errors))
+    return EvaluationSummary(
+        fetched,
+        failed,
+        qualified,
+        rejected,
+        blocked,
+        tuple(errors),
+        claude_checks=claude.checks,
+        claude_fits=claude.fits,
+        spend_usd=claude.spend,
+    )
 
 
 def _active_profile_rules(session: Session) -> list[ProfileRules]:
     profiles = session.scalars(
         select(Profile)
         .where(Profile.is_active.is_(True))
-        .options(selectinload(Profile.reference_artists), selectinload(Profile.anti_signals))
+        .options(
+            selectinload(Profile.reference_artists),
+            selectinload(Profile.anti_signals),
+            selectinload(Profile.genres),
+        )
         .order_by(Profile.id)
     )
     return [ProfileRules.from_profile(profile) for profile in profiles]
@@ -184,7 +252,7 @@ def _store_fits(
         values = {
             "fit_score": fit.score,
             "reference_artists_present": list(fit.reference_artists_present),
-            "genre_tags": [],
+            "genre_tags": list(fit.matched_genres),
             "qualified": profile_rules.profile_id in qualified_ids,
             "scored_at": now,
         }

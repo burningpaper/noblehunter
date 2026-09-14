@@ -7,19 +7,23 @@ These are pure judgements on what Spotify told us, so they're easy to test and t
 - Real: no pay-to-play wording ("submission fee", "guaranteed placement"), and no huge
   following on a handful of tracks. Merely mentioning SubmitHub is fine; plenty of honest
   curators use it.
-- Fit, per profile: reference artists on the playlist (3+ is top tier, 1-2 acceptable), and
-  any anti-signal artist or whole-word term is an outright rejection.
+- Fit, per profile, climbing a ladder: reference artists on the playlist (3+ is top tier, 1-2
+  acceptable); failing that, the playlist names one of the profile's genres in its title or
+  description; failing that, Claude may judge its sound (in `pipeline.evaluate`, because it costs
+  money). Any anti-signal artist or whole-word term is an outright rejection, whatever else fits.
+
+Jarred (2026-09-14) found requiring a reference artist far too restrictive, so genre and Claude
+matches qualify too. They score below any reference-artist match, and the digest always ranks
+reference-artist matches first.
 
 The order matters for the recorded reason: Spotify's own playlists first (never pitchable),
-then pay-to-play (permanent), then dead (re-checked later), then no fit. A playlist with no
-reference artists at all counts as no fit for now; the LLM genre match that could rescue it
-arrives later, behind its own switch. Thresholds are deliberately plain constants, because
-a week of looking at real verdicts will move them.
+then pay-to-play (permanent), then dead (re-checked later), then too small, then no fit.
+Thresholds are deliberately plain constants, because real verdicts will move them.
 """
 
 import re
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
 from core.models import AntiSignalKind, PlaylistStatus, Profile, RejectionReason, SizeBand
@@ -38,8 +42,13 @@ SUSPICIOUS_MAX_TRACKS = 20
 
 TOP_TIER_REFERENCE_ARTISTS = 3
 TIER_TOP, TIER_ACCEPTABLE, TIER_WEAK, TIER_REJECTED = "top", "acceptable", "weak", "rejected"
+TIER_GENRE = "genre"  # no reference artists, but the playlist names one of the profile's genres
+TIER_CLAUDE = "claude"  # no reference artists or genre words, but Claude judged the sound to fit
 TIER_TOO_SMALL = "too-small"  # would fit, but below the profile's follower floor
-QUALIFYING_TIERS = frozenset({TIER_TOP, TIER_ACCEPTABLE})
+QUALIFYING_TIERS = frozenset({TIER_TOP, TIER_ACCEPTABLE, TIER_GENRE, TIER_CLAUDE})
+# Both below the lowest reference-artist score (one artist of three: 0.33).
+GENRE_MATCH_SCORE = 0.3
+CLAUDE_MATCH_SCORE = 0.25
 
 PAY_TO_PLAY_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -62,6 +71,7 @@ class ProfileRules:
     anti_artists: tuple[str, ...] = ()
     anti_terms: tuple[str, ...] = ()
     min_followers: int = DEFAULT_MIN_FOLLOWERS
+    genres: tuple[str, ...] = ()
 
     @classmethod
     def from_profile(cls, profile: Profile) -> "ProfileRules":
@@ -72,6 +82,7 @@ class ProfileRules:
             anti_artists=tuple(s.value for s in profile.anti_signals if s.kind == AntiSignalKind.ARTIST),
             anti_terms=tuple(s.value for s in profile.anti_signals if s.kind == AntiSignalKind.TERM),
             min_followers=profile.min_followers,
+            genres=tuple(genre.tag for genre in sorted(profile.genres, key=lambda genre: genre.priority)),
         )
 
 
@@ -94,6 +105,7 @@ class FitCheck:
     score: float
     reference_artists_present: tuple[str, ...]
     anti_signals_found: tuple[str, ...]
+    matched_genres: tuple[str, ...] = ()  # the profile's genres named by the playlist, or Claude's tags
 
     @property
     def qualifies(self) -> bool:
@@ -152,20 +164,25 @@ def assess_fit(data: PlaylistData, rules: ProfileRules) -> FitCheck:
     )
     anti_found = tuple(name for name in rules.anti_artists if normalize_text(name) in playlist_artists)
     anti_found += tuple(term for term in rules.anti_terms if _contains_phrase(data, term))
+    genres = tuple(genre for genre in rules.genres if _contains_phrase(data, genre))
 
     if anti_found:
-        return FitCheck(TIER_REJECTED, 0.0, present, anti_found)
+        return FitCheck(TIER_REJECTED, 0.0, present, anti_found, genres)
     if len(present) >= TOP_TIER_REFERENCE_ARTISTS:
-        tier = TIER_TOP
+        tier, score = TIER_TOP, 1.0
     elif present:
-        tier = TIER_ACCEPTABLE
+        tier, score = TIER_ACCEPTABLE, len(present) / TOP_TIER_REFERENCE_ARTISTS
+    elif genres:
+        tier, score = TIER_GENRE, GENRE_MATCH_SCORE
     else:
-        tier = TIER_WEAK
-    score = min(1.0, len(present) / TOP_TIER_REFERENCE_ARTISTS)
-    if tier in QUALIFYING_TIERS and (data.followers or 0) < rules.min_followers:
-        # Unknown follower counts count as too small: we can't show a pitch is worth it.
-        tier = TIER_TOO_SMALL
-    return FitCheck(tier, score, present, ())
+        tier, score = TIER_WEAK, 0.0
+    return _with_follower_floor(FitCheck(tier, score, present, (), genres), data, rules)
+
+
+def judged_fit(data: PlaylistData, rules: ProfileRules, genre_tags: Sequence[str]) -> FitCheck:
+    """The fit when Claude has judged the playlist's sound to suit the profile."""
+    fit = FitCheck(TIER_CLAUDE, CLAUDE_MATCH_SCORE, (), (), tuple(genre_tags))
+    return _with_follower_floor(fit, data, rules)
 
 
 def size_band(followers: int | None) -> str | None:
@@ -190,6 +207,24 @@ def judge(data: PlaylistData, rules: Sequence[ProfileRules], today: date) -> Ver
         fits=fits,
         size_band=size_band(data.followers),
     )
+
+
+def verdict_with_fits(data: PlaylistData, verdict: Verdict, fits: dict[int, FitCheck]) -> Verdict:
+    """The same verdict with some fits changed (e.g. by Claude), its outcome worked out again."""
+    reason = _rejection_reason(data, verdict.liveness, verdict.reality, fits)
+    return replace(
+        verdict,
+        fits=fits,
+        rejection_reason=reason,
+        status=PlaylistStatus.REJECTED if reason else PlaylistStatus.QUALIFIED,
+    )
+
+
+def _with_follower_floor(fit: FitCheck, data: PlaylistData, rules: ProfileRules) -> FitCheck:
+    if fit.qualifies and (data.followers or 0) < rules.min_followers:
+        # Unknown follower counts count as too small: we can't show a pitch is worth it.
+        return replace(fit, tier=TIER_TOO_SMALL)
+    return fit
 
 
 def _rejection_reason(

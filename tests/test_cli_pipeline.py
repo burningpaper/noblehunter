@@ -72,6 +72,7 @@ def pipeline_env(engine, monkeypatch):
     monkeypatch.setenv("BRAVE_API_KEY", "brave-test-key")
     monkeypatch.setattr(cli, "build_search_providers", lambda settings, client: [FakeProvider()])
     monkeypatch.setattr(cli, "build_claude_stages", lambda settings, client: [fake_research_stage])
+    monkeypatch.setattr(cli, "build_fit_judge", lambda settings: None)
 
     @contextmanager
     def fake_spotify():

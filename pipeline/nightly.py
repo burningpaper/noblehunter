@@ -6,7 +6,8 @@ evaluation commits per playlist. If anything unexpected goes wrong, the run is m
 with the error, and the error is raised again so nothing hides it. Being blocked by Spotify
 isn't a crash, but it still marks the run failed: the web app's status panel should say so.
 
-The later stages (contact research, then the digest) are handed in by the caller and run after
+The caller can hand in a fit judge, which evaluation uses to give no-fit playlists a Claude
+check, and the later stages (contact research, then the digest). The stages run after
 evaluation, in order, each committing its own work. They run even when Spotify pushed back,
 because they don't need Spotify. A failing stage fails the run, but the night's earlier work
 stays.
@@ -25,6 +26,7 @@ from core.models import Profile
 from core.profiles import get_profile
 from pipeline.discover import DiscoverySummary, discover_for_profile
 from pipeline.evaluate import EvaluationSummary, PlaylistFetcher, evaluate_candidates
+from pipeline.fit_judge import FitJudge
 from pipeline.runs import finish_run, start_run
 from pipeline.search import SearchProvider
 
@@ -61,6 +63,7 @@ def run_pipeline(
     profile_id: int | None = None,
     fetch_limit: int | None = None,
     stages: Sequence[Stage] = (),
+    fit_judge: FitJudge | None = None,
 ) -> RunReport:
     profiles = _profiles_to_discover(session, profile_id)
     names = {profile.id: profile.name for profile in profiles}
@@ -74,7 +77,9 @@ def run_pipeline(
                 discover_for_profile(session, profile_id_to_search, providers, run=run, today=today)
             )
             session.commit()
-        evaluation = evaluate_candidates(session, fetcher, run=run, today=today, now=now, limit=fetch_limit)
+        evaluation = evaluate_candidates(
+            session, fetcher, run=run, today=today, now=now, limit=fetch_limit, fit_judge=fit_judge
+        )
         stage_reports = []
         for stage in stages:
             stage_reports.append(stage(session, run=run, today=today, now=now))
@@ -116,6 +121,11 @@ def describe_run(report: RunReport) -> str:
         f"\nFetched {evaluation.fetched} · failed {evaluation.failed} · "
         f"qualified {evaluation.qualified} · rejected {evaluation.rejected}"
     )
+    if evaluation.claude_checks:
+        lines.append(
+            f"Claude fit checks: {evaluation.claude_checks}, {evaluation.claude_fits} fitted "
+            f"(${evaluation.spend_usd:.2f})"
+        )
     if evaluation.blocked:
         lines.append(BLOCKED)
     lines.extend(f"  {error}" for error in evaluation.errors)
