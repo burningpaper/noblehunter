@@ -162,7 +162,15 @@ def remove_track(session: Session, profile_id: int, track_id: int) -> bool:
 # --- Search terms -----------------------------------------------------------------------
 
 
-def add_search_term(session: Session, profile_id: int, term: str) -> SearchTerm:
+def add_search_term(
+    session: Session,
+    profile_id: int,
+    term: str,
+    *,
+    origin: str = SearchTermOrigin.MANUAL,
+    rationale: str | None = None,
+) -> SearchTerm:
+    """Add an active term. Claude's suggestions arrive with origin `suggested` and the reason given."""
     profile = get_profile(session, profile_id)
     clean = " ".join(str(term).split())
     errors: dict[str, str] = {}
@@ -174,7 +182,7 @@ def add_search_term(session: Session, profile_id: int, term: str) -> SearchTerm:
         errors["term"] = f"“{clean}” is already a search term"
     _raise_if_any(errors)
 
-    search_term = SearchTerm(term=clean, origin=SearchTermOrigin.MANUAL, status=SearchTermStatus.ACTIVE)
+    search_term = SearchTerm(term=clean, origin=origin, status=SearchTermStatus.ACTIVE, rationale=rationale)
     profile.search_terms.append(search_term)
     session.flush()
     return search_term

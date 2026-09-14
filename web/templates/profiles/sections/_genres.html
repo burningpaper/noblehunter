@@ -36,4 +36,7 @@
     <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
     {% if se.tag %}<p class="field__error inline-form__error" id="genre-tag-error">{{ se.tag }}</p>{% endif %}
   </form>
+
+  {% set section_key = "genres" %}
+  {% include "profiles/_ask_claude.html" %}
 </section>

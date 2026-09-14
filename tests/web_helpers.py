@@ -11,7 +11,10 @@ ALLOWED = "owner@example.com"
 
 
 def web_settings(secure_cookies: bool = False) -> WebSettings:
+    # No env files and no Anthropic key: a test must never pick up the real key from .env.local.
     return WebSettings(
+        _env_file=None,
+        anthropic_api_key=None,
         web_database_url="postgresql+psycopg://noble_web:dbsecret@127.0.0.1:55432/noble_test",
         session_secret="s" * 48,
         google_client_id="123-abc.apps.googleusercontent.com",

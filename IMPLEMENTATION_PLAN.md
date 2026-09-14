@@ -22,7 +22,9 @@ Plan for the Curator Discovery Pipeline in `spec.md`, updated with Jarred's deci
 | Configuration | **Everything is configured in the web app**, per profile (and per search term where it applies). YAML import is only a bootstrap/backup tool; Jarred enters Synman himself | 2026-09-14 |
 | Minimum size | Playlists **under 50 followers aren't worth pitching**. The floor is a per-profile setting (default 50). Too-small playlists are re-checked later, since they can grow | 2026-09-14 |
 | Contactability | **No contactable person, no lead.** Service and automated owners (playlist generators, stats sites, chart accounts) and playlists with no findable contact are dropped | 2026-09-14 |
-| Claude | **Required, not optional.** Stage 6 contact research is an agentic Claude loop (search, follow links, read bios). `ANTHROPIC_API_KEY` goes in `.env.local` on the Mac Mini only | 2026-09-14 |
+| Claude | **Required, not optional.** Stage 6 contact research is an agentic Claude loop (search, follow links, read bios). `ANTHROPIC_API_KEY` goes in `.env.local` on the Mac Mini, and the same key goes in Vercel's Production environment for Ask Claude (Jarred's choice: one key, not two) | 2026-09-14 |
+| Ask Claude | An "Ask Claude" button in the genres, reference artists, anti-signals and search terms sections. Ticked suggestions are added directly. The web app still starts without the key; the button then explains what's missing | 2026-09-14 |
+| Claude spend | Nightly cap $2 by default, editable in the web app. Target is under $2 a night | 2026-09-14 |
 | Deploy | Profile editor and pipeline code pushed 2026-09-14 with Jarred's OK | 2026-09-14 |
 | Database roles | `noble_web` and `noble_pipeline` are **created with SQL by `pipeline.cli`, never in the Neon console**. Neon adds console/CLI/API roles to `neon_superuser` (`pg_write_all_data`, `CREATEROLE`, `BYPASSRLS`), which would make least-privilege grants meaningless | 2026-09-13 |
 | Repo / deploy | `github.com/burningpaper/noblehunter` (public, by Jarred's choice). Vercel project `noblehunter` with framework `fastapi`, live at `noblehunter.vercel.app`, Neon linked | 2026-09-13 |
@@ -73,7 +75,7 @@ Because of these, the spec's static YAML inputs (§2) become **database tables e
 ### LLM cost levers
 - **Cheap checks first.** Deterministic gates and the code-first contact ladder run before any model call.
 - **Batches.** Genre classification can use the Message Batches API at 50% cost.
-- **Rough order of magnitude on Opus 5:** ~$20–30 a night before optimisation, mostly the contact agent. It scales with the number of active profiles. The nightly spend cap and search quota are enforced in code and shown in the web app.
+- **Claude spend target: under $2 a night** (revised 2026-09-14 from a pessimistic $20–30). The spec's free steps (description, links, other playlists) go first. Only playlists likely to make the digest are researched, once per curator, best fit first, stopping when the digest is full. Pages reach Claude as trimmed text with routes pre-extracted, and search uses Serper/Brave. The model (Haiku 4.5 or Sonnet 5) is chosen by running both on the ~20 labelled playlists. The nightly cap defaults to **$2** and is editable in the web app; reaching it stops research and the run reports what was left.
 
 ---
 
@@ -153,6 +155,16 @@ Status: In Progress.
 - ⏳ Found by reading the leads, and needing Jarred's call: (1) a minimum-followers floor, since many qualifiers are personal playlists with under 100 followers; (2) an owner filter or reachability tag for automated and service accounts (Chosic, volt.fm, chart and label accounts); (3) one pitch per curator in the digest (arcticdrones owns two qualifiers).
 - Note: "The Sound of …" playlists belong to Spotify's `thesoundsofspotify` account but don't use the `37i9dQZF1` ID prefix, so they have to be filtered by owner at fetch time.
 
+## Stage 2f: Ask Claude in the profile editor
+Goal: A small "Ask Claude" button in the profile editor's sections opens a prompt field (e.g. "What search terms would find IDM playlists on Spotify?"). Claude replies with a list of options, each with a one-line reason. Jarred ticks the ones he wants and clicks "Add selected"; they're added through the same validated path as typed entries. Search terms are stored with origin `suggested`. Ticking a suggestion counts as approving it, so it goes straight to active.
+Design:
+- Claude sees the profile's current genres, artists, anti-signals and terms, so a prompt like "more artists like these" works. Suggestions already on the profile are filtered out in code.
+- One structured-output call (Pydantic) per ask: `claude-opus-5` for its music knowledge, at low effort for speed, with a bounded `max_tokens`. That's about 1–3 cents an ask.
+- It runs in the web app on Vercel, so `anthropic` moves into the web dependencies and Vercel needs `ANTHROPIC_API_KEY`. The suggester is injected like the identity provider, so tests never call the API. An opt-in live test checks the real call.
+- Errors appear inline ("Claude didn't answer, try again") and are logged. Nothing is added unless Jarred ticks it.
+Success Criteria: From an empty section, ask, tick, add, and the items appear with the section's counts updated. Existing entries never come back as suggestions. An API failure leaves the section usable. Keyboard and screen-reader friendly, with a loading state while Claude thinks.
+Status: In Progress
+
 ## Stage 4: Fetch and parse
 Goal: The Stage 0 fetch approach made production-grade: rate limit, retry then `fetch-failed`, a track ceiling / tail read for huge playlists, and a parser working from trimmed fixtures.
 Success Criteria: Parser tests pass against trimmed fixtures (including >100 tracks and a partial read). A failed fetch doesn't stop the run. The rate limit is verified in a test.
@@ -178,9 +190,16 @@ Success Criteria: A manual end-to-end run meets the spec's success condition per
 Status: Not Started
 
 ## Stage 8: Scheduling and operations
-Goal: On the Mac Mini: a launchd nightly job, a launchd `run_requests` poller, wake schedule, lock file, heartbeat writes, failure alert and log rotation. Production Vercel deploys run from the main branch.
-Success Criteria: Three consecutive unattended nights complete. A deliberately broken stage leaves the earlier stages' work intact and the alert fires. "Run now" from the web app starts a run within 5 minutes. Pulling the Mac Mini's network mid-run results in a stale heartbeat warning in the web app, with no corrupted rows.
-Status: Not Started
+Goal: The nightly runner on the Mac Mini, which is the Mac Jarred develops on (confirmed 2026-09-14). Built together with Stage 2e: "Run now" and the status panel in the web app.
+Design:
+- **One long-lived worker,** `python -m pipeline.cli worker`, kept alive by a launchd LaunchAgent: it starts at login and restarts if it dies. That's simpler than two launchd jobs, because one process owns the schedule, the "Run now" queue, the lock and the heartbeat.
+- **Every minute** it writes a heartbeat to a one-row `worker_status` table (migration 0004). Then it either claims a pending `run_requests` row (`FOR UPDATE SKIP LOCKED`), or starts the nightly run if it's past 02:00 local and no scheduled run has started today. The same rule catches up after the Mac was asleep at 02:00.
+- **No overlaps:** a Postgres advisory lock stops two runs overlapping, even if a second worker is started by mistake. During a run the heartbeat keeps ticking from a background thread, so a long run doesn't look dead.
+- **Logs** go to `~/Library/Logs/noble-hunter/`, rotated. Search keys come from `.env.local`; launchd never sees `spike/.env`.
+- **Web app:** a "Run now" button (clicking twice is harmless) and a status panel. The panel shows whether the runner is online (offline once the heartbeat is more than 3 minutes old), the current run, and the last run with its counts. It warns when the last run failed or nothing has finished in 26 hours. Alerts are web-app only, which is Jarred's choice.
+- **Install:** `scripts/install-worker.sh` writes and loads the LaunchAgent. Waking the Mac at 01:55 (`sudo pmset repeat wake`) is optional, and Jarred runs it himself.
+Success Criteria: Three consecutive unattended nights complete. A deliberately broken stage leaves the earlier stages' work intact and the web app shows the failure. "Run now" starts a run within 2 minutes. Pulling the network mid-run shows the runner as offline in the web app, with no corrupted rows. Unit tests cover the schedule rule, claiming requests, overlap refusal and the status panel's warnings.
+Status: In Progress
 
 ## Stage 9: Feedback, neighbours and search-term suggestions
 Goal:
@@ -204,6 +223,6 @@ Status: Not Started
 2. **Login method.** The web app is public on Vercel. Options: a single-user password (simplest), a magic-link email, or "Sign in with Google" restricted to your address (no password to manage). Vercel's own deployment protection can be added on top on a paid plan.
 3. **Pitching across profiles.** If a curator is pitched for profile A, can they be pitched for profile B? Recommendation: no more than once per 90 days across all profiles, to protect your reputation with curators.
 4. **LangGraph or plain Python?** Recommendation: plain Python, unless the existing Mac Mini setup has shared LangGraph infrastructure worth matching.
-5. **Nightly LLM spend cap.** Pick a dollar figure. It scales with active profiles.
+5. ~~**Nightly LLM spend cap.**~~ Decided 2026-09-14: $2 a night by default, editable in the web app.
 6. **Existing code.** Is there an existing repo, Neon project or conventions on the Mac Mini to reuse?
 7. **First real profile.** Synman's genres, reference artists, tracks and anti-signals. Used to seed Stage 1 and re-measure yield.

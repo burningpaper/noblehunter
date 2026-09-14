@@ -49,4 +49,7 @@
     <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
     {% if se.term and sf.term %}<p class="field__error inline-form__error" id="search-term-error">{{ se.term }}</p>{% endif %}
   </form>
+
+  {% set section_key = "terms" %}
+  {% include "profiles/_ask_claude.html" %}
 </section>

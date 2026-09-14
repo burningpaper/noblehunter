@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from core.settings import MissingSettingError
+from core.suggestions import ClaudeSuggester, Suggester
 from web.auth import IdentityProvider, google_provider
 from web.auth import router as auth_router
 from web.db import build_engine
@@ -25,6 +26,7 @@ from web.profile_contents import router as profile_contents_router
 from web.profiles import router as profiles_router
 from web.sessions import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS
 from web.settings import WebSettings, load_web_settings
+from web.suggestions import router as suggestions_router
 from web.templating import TEMPLATES_DIR, templates
 
 logger = logging.getLogger("noble_hunter.web")
@@ -52,14 +54,20 @@ SECURITY_HEADERS = {
 HSTS = "max-age=31536000; includeSubDomains"
 
 
-def create_app(settings: WebSettings, identity_provider: IdentityProvider | None = None) -> FastAPI:
+def create_app(
+    settings: WebSettings,
+    identity_provider: IdentityProvider | None = None,
+    suggester: Suggester | None = None,
+) -> FastAPI:
     app = _base_app()
     app.state.settings = settings
     app.state.engine = build_engine(settings)
     app.state.identity_provider = identity_provider or google_provider(settings)
+    app.state.suggester = suggester or _claude_suggester(settings)
     app.include_router(auth_router)
     app.include_router(profiles_router)
     app.include_router(profile_contents_router)
+    app.include_router(suggestions_router)
 
     @app.get("/health")
     def health() -> dict:
@@ -81,6 +89,13 @@ def create_app(settings: WebSettings, identity_provider: IdentityProvider | None
     )
     _add_security_headers(app, hsts=settings.secure_cookies)
     return app
+
+
+def _claude_suggester(settings: WebSettings) -> Suggester | None:
+    """Ask Claude needs ANTHROPIC_API_KEY. Without it the app still runs and the panel says what's missing."""
+    if settings.anthropic_api_key is None:
+        return None
+    return ClaudeSuggester.from_api_key(settings.anthropic_api_key.get_secret_value())
 
 
 def create_unconfigured_app() -> FastAPI:

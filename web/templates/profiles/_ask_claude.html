@@ -1,0 +1,22 @@
+{# The Ask Claude panel inside a section. Expects `section_key`. Plain <details>, so it opens
+   without JavaScript (and without inline scripts the CSP would block). It stays open when
+   the section comes back with a note, e.g. after adding suggestions. #}
+<details class="ask-claude"{% if section_notice %} open{% endif %}>
+  <summary class="ask-claude__toggle">
+    <span class="ask-claude__spark" aria-hidden="true">✦</span>
+    Ask Claude
+  </summary>
+  <div class="ask-claude__panel">
+    <form class="inline-form ask-claude__form" hx-post="/profiles/{{ profile.id }}/suggest/{{ section_key }}"
+          hx-target="#suggestions-{{ section_key }}" hx-swap="innerHTML" hx-disabled-elt="find button" novalidate>
+      <label class="visually-hidden" for="ask-{{ section_key }}">Ask Claude for {{ suggestion_labels[section_key] | lower }}</label>
+      <input class="input" id="ask-{{ section_key }}" name="prompt" maxlength="500" autocomplete="off"
+             placeholder="{{ suggestion_placeholders[section_key] }}">
+      <button class="button" type="submit">Ask <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
+      <p class="htmx-indicator ask-claude__thinking" aria-hidden="true">Claude is thinking…</p>
+    </form>
+    <div class="ask-claude__results" id="suggestions-{{ section_key }}" aria-live="polite">
+      {%- if section_notice %}<p class="notice" role="status">{{ section_notice }}</p>{% endif -%}
+    </div>
+  </div>
+</details>

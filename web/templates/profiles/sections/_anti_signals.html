@@ -42,4 +42,7 @@
     <p class="field__error inline-form__error" id="anti-signal-error">{{ se.kind or se.value }}</p>
     {% endif %}
   </form>
+
+  {% set section_key = "anti_signals" %}
+  {% include "profiles/_ask_claude.html" %}
 </section>

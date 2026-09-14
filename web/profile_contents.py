@@ -166,11 +166,13 @@ def _apply(
     except LookupError:
         raise HTTPException(status_code=404) from None
     except ProfileValidationError as error:
-        return _render(request, profile, section, errors=error.errors, form=form or {}, status_code=422)
-    return _render(request, profile, section, auto_paused=result is True)
+        return render_section(
+            request, profile, section, errors=error.errors, form=form or {}, status_code=422
+        )
+    return render_section(request, profile, section, auto_paused=result is True)
 
 
-def _render(
+def render_section(
     request: Request,
     profile,
     section: str,
@@ -178,13 +180,16 @@ def _render(
     errors: dict | None = None,
     form: dict | None = None,
     auto_paused: bool = False,
+    notice: str | None = None,
     status_code: int = 200,
 ) -> Response:
+    """A section plus the status panel (out of band). `notice` is a short note for its Ask Claude panel."""
     context = {
         "profile": profile,
         "section": section,
         "section_errors": errors or {},
         "section_form": form or {},
+        "section_notice": notice,
         "problems": activation_problems(profile),
         "auto_paused": auto_paused,
         "oob": True,

@@ -655,6 +655,7 @@ name = "noble-hunter"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "authlib" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -678,7 +679,6 @@ dev = [
 ]
 pipeline = [
     { name = "alembic" },
-    { name = "anthropic" },
     { name = "httpx" },
     { name = "playwright" },
     { name = "pyyaml" },
@@ -687,6 +687,7 @@ pipeline = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", specifier = ">=1.5.0" },
     { name = "authlib", specifier = ">=1.6" },
     { name = "fastapi", specifier = ">=0.117.1" },
     { name = "httpx", specifier = ">=0.28" },
@@ -710,7 +711,6 @@ dev = [
 ]
 pipeline = [
     { name = "alembic", specifier = ">=1.16" },
-    { name = "anthropic", specifier = ">=1.5.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "playwright", specifier = ">=1.55" },
     { name = "pyyaml", specifier = ">=6.0.2" },

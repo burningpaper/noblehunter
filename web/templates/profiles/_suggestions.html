@@ -1,0 +1,36 @@
+{# Claude's answer for one section: tick boxes plus reasons, or a note saying why there are none.
+   Each box carries its suggestion as JSON; `tojson` escapes quotes and angle brackets, so the
+   single-quoted attribute is safe whatever Claude wrote. #}
+{% if notice %}
+<p class="notice notice--warning" role="alert">{{ notice }}</p>
+{% elif suggestions %}
+<form class="suggestions" hx-post="/profiles/{{ profile.id }}/suggest/{{ section_key }}/add"
+      hx-target="#section-{{ section_key }}" hx-swap="outerHTML" hx-disabled-elt="find button" novalidate>
+  <fieldset class="suggestions__fieldset">
+    <legend class="suggestions__legend">Claude suggests · tick the ones to add</legend>
+    <ul class="suggestions__list" role="list">
+      {% for suggestion in suggestions %}
+      {% set field_id = "suggestion-" ~ section_key ~ "-" ~ loop.index %}
+      <li class="suggestion">
+        <input class="suggestion__check" type="checkbox" id="{{ field_id }}" name="choice"
+               value='{{ {"value": suggestion.value, "reason": suggestion.reason, "kind": suggestion.kind} | tojson }}'>
+        <label class="suggestion__label" for="{{ field_id }}">
+          <span class="suggestion__value">
+            {{ suggestion.value }}
+            {% if suggestion.kind %}<span class="tag">{{ suggestion.kind }}</span>{% endif %}
+          </span>
+          {% if suggestion.reason %}<span class="suggestion__reason">{{ suggestion.reason }}</span>{% endif %}
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+  </fieldset>
+  <div class="suggestions__actions">
+    <button class="button button--primary" type="submit">
+      Add selected <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+  </div>
+</form>
+{% elif asked %}
+<p class="content-section__empty">Claude had nothing new to add. Try asking a different way.</p>
+{% endif %}

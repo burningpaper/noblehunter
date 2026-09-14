@@ -28,4 +28,7 @@
     <button class="button" type="submit">Add <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
     {% if se.name %}<p class="field__error inline-form__error" id="artist-name-error">{{ se.name }}</p>{% endif %}
   </form>
+
+  {% set section_key = "artists" %}
+  {% include "profiles/_ask_claude.html" %}
 </section>

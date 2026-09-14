@@ -22,6 +22,8 @@ class WebSettings(BaseSettings):
     google_client_secret: SecretStr
     allowed_emails: str
     secure_cookies: bool = True
+    # Optional on purpose: without it the app still runs and Ask Claude explains what's missing.
+    anthropic_api_key: SecretStr | None = None
 
     @field_validator("session_secret")
     @classmethod
