@@ -30,6 +30,7 @@ dev = [
 ]
 pipeline = [
     "alembic>=1.16",
+    "anthropic>=1.5.0",
     "httpx>=0.28",
     "playwright>=1.55",
     "pyyaml>=6.0.2",
