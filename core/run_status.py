@@ -101,7 +101,9 @@ def _warnings(worker, online: bool, current: Run | None, last: Run | None, now: 
             f"The runner on the Mac Mini hasn't checked in for {_span(now - worker.heartbeat_at)}. "
             "Is the Mac on and awake?"
         )
-    if last is not None and last.status == RunStatus.FAILED:
+    # Once a newer run is under way, an earlier failure is old news; the new run is what matters.
+    newer_run_under_way = current is not None and last is not None and current.started_at >= last.started_at
+    if last is not None and last.status == RunStatus.FAILED and not newer_run_under_way:
         warnings.append(f"The last run failed: {last.error or 'no reason was recorded'}")
     if current is None:
         if last is None:

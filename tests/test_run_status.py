@@ -134,3 +134,20 @@ class TestRunStatus:
         request, _ = request_run(session, requested_by="owner@example.com")
 
         assert run_status(session, NOW).open_request.id == request.id
+
+    def test_a_failure_is_not_nagged_about_once_a_newer_run_is_under_way(self, session):
+        checked_in(session, NOW, state=WorkerState.RUNNING)
+        finished_run(
+            session, finished=NOW - timedelta(minutes=10), status=RunStatus.FAILED, error="TargetClosedError"
+        )
+        session.add(
+            Run(
+                trigger=RunTrigger.MANUAL,
+                status=RunStatus.RUNNING,
+                started_at=NOW - timedelta(minutes=5),
+                heartbeat_at=NOW,
+            )
+        )
+        session.flush()
+
+        assert not any("failed" in warning for warning in run_status(session, NOW).warnings)

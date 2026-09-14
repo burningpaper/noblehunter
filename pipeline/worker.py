@@ -45,6 +45,9 @@ STALE_RUN_AFTER = timedelta(minutes=10)
 START_TOLERANCE = timedelta(minutes=1)  # the Mac's clock and the database's can differ a little
 RUN_LOCK_KEY = 7_406_311  # any fixed number, as long as every runner uses the same one
 MAX_ERROR_LENGTH = 500
+STOPPED_BY_RESTART = (
+    "Stopped because the runner was restarted or shut down. The next run carries on from here."
+)
 LOG_FILE_BYTES = 5_000_000
 LOG_FILE_COUNT = 5
 
@@ -117,6 +120,7 @@ def tick(
     clock: Callable[[], datetime],
     hostname: str,
     schedule: Schedule,
+    stopping: Callable[[], bool] = lambda: False,
 ) -> TickResult:
     """One pass of the loop: check in, then run a requested or scheduled run if there is one."""
     now = clock()
@@ -128,9 +132,13 @@ def tick(
     request = claim_run_request(session, now)
     if request is not None:
         session.commit()
-        return _run(session, runner, clock, hostname, schedule, trigger=RunTrigger.MANUAL, request=request)
+        return _run(
+            session, runner, clock, hostname, schedule, stopping, trigger=RunTrigger.MANUAL, request=request
+        )
     if scheduled_run_due(session, now, schedule):
-        return _run(session, runner, clock, hostname, schedule, trigger=RunTrigger.SCHEDULE, request=None)
+        return _run(
+            session, runner, clock, hostname, schedule, stopping, trigger=RunTrigger.SCHEDULE, request=None
+        )
     return TickResult("idle")
 
 
@@ -140,6 +148,7 @@ def _run(
     clock: Callable[[], datetime],
     hostname: str,
     schedule: Schedule,
+    stopping: Callable[[], bool],
     *,
     trigger: str,
     request: RunRequest | None,
@@ -161,9 +170,14 @@ def _run(
         run_id = runner(session, trigger=trigger, profile_id=profile_id)
     except Exception as error:
         session.rollback()
-        message = f"{type(error).__name__}: {error}"[:MAX_ERROR_LENGTH]
-        logger.exception("The %s run failed", trigger)
-        _record_failure_if_no_run(session, trigger, started, clock(), message)
+        if stopping():
+            # The browser closes under a run when the runner is told to stop; that's not the run failing.
+            message = STOPPED_BY_RESTART
+            logger.warning("The %s run was cut short because the runner is stopping", trigger)
+        else:
+            message = f"{type(error).__name__}: {error}"[:MAX_ERROR_LENGTH]
+            logger.exception("The %s run failed", trigger)
+        _record_failure(session, trigger, started, clock(), message)
         result = TickResult(action, error=message)
     else:
         logger.info("Run %s finished", run_id)
@@ -183,17 +197,25 @@ def _run(
     return result
 
 
-def _record_failure_if_no_run(session: Session, trigger: str, started: datetime, now: datetime, message: str):
-    """The pipeline records its own failures; this covers a run that died before it started."""
-    recorded = session.scalar(
-        select(Run.id).where(Run.trigger == trigger, Run.started_at >= started - START_TOLERANCE).limit(1)
+def _record_failure(session: Session, trigger: str, started: datetime, now: datetime, message: str) -> None:
+    """Make sure the failed run is on record with the right reason.
+
+    The pipeline records its own failures, but with the raw error; a run that died before it got
+    going has no record at all. A run cut short by a restart gets the plain reason either way.
+    """
+    run = session.scalar(
+        select(Run)
+        .where(Run.trigger == trigger, Run.started_at >= started - START_TOLERANCE)
+        .order_by(Run.started_at.desc())
+        .limit(1)
     )
-    if recorded is not None:
-        return
-    run = Run(trigger=trigger, status=RunStatus.RUNNING, started_at=started, heartbeat_at=started)
-    session.add(run)
-    session.flush()
-    finish_run(session, run, now=now, error=message)
+    if run is None:
+        run = Run(trigger=trigger, status=RunStatus.RUNNING, started_at=started, heartbeat_at=started)
+        session.add(run)
+        session.flush()
+        finish_run(session, run, now=now, error=message)
+    elif message == STOPPED_BY_RESTART and run.status == RunStatus.FAILED:
+        run.error = message
 
 
 def _close_request(request: RunRequest, now: datetime, *, error: str | None) -> None:
@@ -388,6 +410,7 @@ def run_forever(
                     clock=lambda: datetime.now(UTC),
                     hostname=hostname,
                     schedule=local_schedule(),
+                    stopping=stop.is_set,
                 )
         except Exception:
             # Usually the network or the database is briefly away (e.g. just after the Mac wakes).
