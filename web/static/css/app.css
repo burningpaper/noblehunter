@@ -1462,6 +1462,15 @@ code {
   max-width: 32rem;
 }
 
+.digest-group__artist {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* ---- People ------------------------------------------------------------------------------ */
 
 .people-list {

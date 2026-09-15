@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
+from core.access import MAX_POSTGRES_INT
 from core.exclusion import contact_is_excluded, curator_is_eligible, playlist_ids_to_skip, record_verdict
 from core.models import PlaylistStatus, RejectionReason
 from tests.factories import make_contact, make_curator, make_outreach, make_playlist, make_profile
@@ -84,6 +85,11 @@ class TestRecordVerdict:
     def test_missing_outreach_raises(self, session):
         with pytest.raises(LookupError, match="999999"):
             record_verdict(session, 999999, "skip", at(TODAY))
+
+    def test_an_out_of_range_outreach_id_is_treated_as_missing(self, session):
+        """Postgres's `integer` column can't hold this id, so it can't be a real row."""
+        with pytest.raises(LookupError, match=str(MAX_POSTGRES_INT + 1)):
+            record_verdict(session, MAX_POSTGRES_INT + 1, "skip", at(TODAY))
 
 
 class TestPlaylistsToSkip:

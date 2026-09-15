@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
 
+from core.access import is_storable_id
 from core.models import Contact, Curator, Outreach, OutreachStatus, Playlist, PlaylistStatus, RejectionReason
 
 COOLDOWN_DAYS = 90
@@ -55,6 +56,8 @@ def record_verdict(session: Session, outreach_id: int, verdict: str, now: dateti
         allowed = ", ".join(sorted(VERDICTS))
         raise ValueError(f"Unknown verdict {verdict!r}; expected one of: {allowed}")
 
+    if not is_storable_id(outreach_id):
+        raise LookupError(f"Outreach {outreach_id} not found")
     outreach = session.get(Outreach, outreach_id)
     if outreach is None:
         raise LookupError(f"Outreach {outreach_id} not found")

@@ -13,8 +13,10 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from core.access import Viewer, require_outreach
 from core.digest_view import digest_view, entry_view
 from core.exclusion import record_verdict
+from web.access import CurrentViewer
 from web.db import get_db
 from web.templating import templates
 
@@ -28,21 +30,24 @@ UNKNOWN_VERDICT = "Choose pitched, skip, bad fit or dead."
 
 
 @router.get("/digest")
-def latest_digest(request: Request, db: DbSession) -> Response:
-    return _page(request, db, None)
+def latest_digest(request: Request, db: DbSession, viewer: CurrentViewer) -> Response:
+    return _page(request, db, None, viewer)
 
 
 @router.get("/digest/{day}")
-def digest_for_day(request: Request, day: str, db: DbSession) -> Response:
+def digest_for_day(request: Request, day: str, db: DbSession, viewer: CurrentViewer) -> Response:
     try:
         chosen = date.fromisoformat(day)
     except ValueError:
         raise HTTPException(status_code=404) from None
-    return _page(request, db, chosen)
+    return _page(request, db, chosen, viewer)
 
 
 @router.post("/outreach/{outreach_id}/verdict")
-def save_verdict(request: Request, outreach_id: int, db: DbSession, verdict: FormText = "") -> Response:
+def save_verdict(
+    request: Request, outreach_id: int, db: DbSession, viewer: CurrentViewer, verdict: FormText = ""
+) -> Response:
+    require_outreach(db, viewer, outreach_id)
     now = datetime.now(UTC)
     try:
         record_verdict(db, outreach_id, verdict, now)
@@ -54,8 +59,8 @@ def save_verdict(request: Request, outreach_id: int, db: DbSession, verdict: For
     return _entry(request, db, outreach_id, now.date())
 
 
-def _page(request: Request, db: Session, chosen: date | None) -> Response:
-    view = digest_view(db, chosen, today=datetime.now(UTC).date())
+def _page(request: Request, db: Session, chosen: date | None, viewer: Viewer) -> Response:
+    view = digest_view(db, chosen, today=datetime.now(UTC).date(), viewer=viewer)
     return templates.TemplateResponse(request, "digest/page.html", {"view": view, **_verdict_context()})
 
 

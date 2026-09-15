@@ -30,7 +30,11 @@
 <div class="card empty-state rise">
   <h2 class="empty-state__title">No digest yet</h2>
   <p class="empty-state__body">
+    {% if is_admin %}
     The first one appears after a run finds curators you can reach. Start one with Run now on the Profiles page.
+    {% else %}
+    The first one appears after a nightly run finds curators you can reach.
+    {% endif %}
   </p>
 </div>
 {% else %}
@@ -47,6 +51,7 @@
   {% for group in view.profiles %}
   <section class="digest-group" aria-labelledby="digest-group-{{ loop.index }}">
     <h2 class="digest-group__title" id="digest-group-{{ loop.index }}">
+      {% if view.show_artists %}<span class="digest-group__artist">{{ group.artist_name }}</span>{% endif %}
       {{ group.profile_name }} <span class="digest-group__count">{{ group.entries | length }}</span>
     </h2>
     <ol class="digest-list" role="list">
@@ -57,7 +62,7 @@
   </section>
   {% endfor %}
 
-  {% if view.counts %}
+  {% if view.counts and is_admin %}
   <section class="card digest-counts" aria-labelledby="digest-counts-heading">
     <h2 id="digest-counts-heading" class="card__title">The night in numbers</h2>
     <dl class="run-facts">

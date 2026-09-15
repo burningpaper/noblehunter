@@ -3,11 +3,17 @@
 The web app runs on Vercel and never imports pipeline code, so everything the page needs is
 read here, straight from the tables the pipeline wrote. A digest is identified by its date. The
 page shows the latest by default and can step back through earlier nights. Entries keep the
-order the pipeline ranked them in, grouped under their profile.
+order the pipeline ranked them in, grouped under their profile, and groups are keyed on the
+artist's id, not its name, because names are unique only case-sensitively.
+
+Every query here is scoped to the viewer with `visible_to`: a member sees only their own
+artists' entries and nights, and never learns whether another artist even has a digest. Admins
+see everything, and `show_artists` tells the template to label each group so it's clear whose
+profile it is.
 
 The counts come from the run that produced that night's digest: the latest run that started
-within that date (with a margin for the Mac's time zone). They show how many playlists were
-found, fetched, qualified, researched and put in the digest.
+within that date (with a margin for the Mac's time zone). They total every artist's pipeline
+activity, so the page shows them to admins only.
 """
 
 from dataclasses import dataclass
@@ -16,8 +22,9 @@ from datetime import UTC, date, datetime, time, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from core.access import Viewer, visible_to
 from core.contact_routes import ROUTE_LABELS, best_contact, contact_href
-from core.models import Curator, Outreach, Playlist, PlaylistProfileFit, Profile, Run, RunStageCount
+from core.models import Artist, Curator, Outreach, Playlist, PlaylistProfileFit, Profile, Run, RunStageCount
 
 PLAYLIST_URL = "https://open.spotify.com/playlist/{}"
 SHORT_DIGEST = 10
@@ -53,6 +60,7 @@ class EntryView:
 
 @dataclass(frozen=True)
 class ProfileDigest:
+    artist_name: str
     profile_name: str
     entries: tuple[EntryView, ...]
 
@@ -71,6 +79,7 @@ class DigestView:
     counts: tuple[NightCount, ...]
     earlier_date: date | None
     later_date: date | None
+    show_artists: bool = False
 
     @property
     def total(self) -> int:
@@ -82,20 +91,35 @@ class DigestView:
         return 0 < self.total < SHORT_DIGEST
 
 
-def digest_view(session: Session, digest_date: date | None, *, today: date) -> DigestView:
+def digest_view(session: Session, digest_date: date | None, *, today: date, viewer: Viewer) -> DigestView:
     dates = list(
-        session.scalars(select(Outreach.digest_date).distinct().order_by(Outreach.digest_date.desc()))
+        session.scalars(
+            select(Outreach.digest_date)
+            .join(Profile, Profile.id == Outreach.profile_id)
+            .where(visible_to(viewer, Profile.artist_id))
+            .distinct()
+            .order_by(Outreach.digest_date.desc())
+        )
     )
+    show_artists = viewer.is_admin or len(viewer.artist_ids) > 1
     chosen = digest_date if digest_date is not None else (dates[0] if dates else None)
     if chosen is None:
-        return DigestView(digest_date=None, profiles=(), counts=(), earlier_date=None, later_date=None)
+        return DigestView(
+            digest_date=None,
+            profiles=(),
+            counts=(),
+            earlier_date=None,
+            later_date=None,
+            show_artists=show_artists,
+        )
 
     return DigestView(
         digest_date=chosen,
-        profiles=_profiles(session, chosen, today),
+        profiles=_profiles(session, chosen, today, viewer),
         counts=_counts(session, chosen),
         earlier_date=next((day for day in dates if day < chosen), None),
         later_date=next((day for day in reversed(dates) if day > chosen), None),
+        show_artists=show_artists,
     )
 
 
@@ -106,15 +130,31 @@ def entry_view(session: Session, outreach_id: int, *, today: date) -> EntryView:
     return _entry(session, *row, today=today)
 
 
-def _profiles(session: Session, chosen: date, today: date) -> tuple[ProfileDigest, ...]:
-    groups: dict[str, list[EntryView]] = {}
-    for outreach, profile, playlist, curator in session.execute(
-        _entry_rows().where(Outreach.digest_date == chosen).order_by(Outreach.id)
-    ):
-        groups.setdefault(profile.name, []).append(
+def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tuple[ProfileDigest, ...]:
+    # Keyed on ids, not names: artist names are unique only case-sensitively, and two artists
+    # could otherwise collide here even though `visible_to` and the profiles page never confuse
+    # them. Rows arrive in pipeline ranking order (Outreach.id), and dict insertion order plus a
+    # stable sort keep that order within one artist once groups are sorted by artist name.
+    groups: dict[tuple[int, str, int], tuple[str, list[EntryView]]] = {}
+    rows = session.execute(
+        _entry_rows()
+        .join(Artist, Artist.id == Profile.artist_id)
+        .add_columns(Artist.id, Artist.name)
+        .where(Outreach.digest_date == chosen, visible_to(viewer, Profile.artist_id))
+        .order_by(Outreach.id)
+    )
+    for outreach, profile, playlist, curator, artist_id, artist_name in rows:
+        key = (artist_id, artist_name, profile.id)
+        groups.setdefault(key, (profile.name, []))[1].append(
             _entry(session, outreach, profile, playlist, curator, today=today)
         )
-    return tuple(ProfileDigest(name, tuple(entries)) for name, entries in groups.items())
+    # Artists in name order (case-insensitive, ties broken by id); within one artist, profiles
+    # keep the pipeline's ranking order because sorted() is stable and shares that group's key.
+    ordered = sorted(groups.items(), key=lambda item: (item[0][1].casefold(), item[0][0]))
+    return tuple(
+        ProfileDigest(artist_name, profile_name, tuple(entries))
+        for (_artist_id, artist_name, _profile_id), (profile_name, entries) in ordered
+    )
 
 
 def _entry_rows():

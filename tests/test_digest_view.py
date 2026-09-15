@@ -10,7 +10,14 @@ import pytest
 from core.contact_routes import best_contact, contact_href
 from core.digest_view import digest_view
 from core.models import PlaylistProfileFit, PlaylistStatus, Run, RunStageCount
-from tests.factories import make_contact, make_curator, make_outreach, make_playlist, make_profile
+from tests.factories import (
+    admin_viewer,
+    make_contact,
+    make_curator,
+    make_outreach,
+    make_playlist,
+    make_profile,
+)
 
 TODAY = date(2026, 9, 15)
 YESTERDAY = date(2026, 9, 14)
@@ -81,7 +88,7 @@ class TestDigestView:
         entry(session, profile, digest_date=YESTERDAY)
         entry(session, profile, digest_date=TODAY)
 
-        view = digest_view(session, None, today=TODAY)
+        view = digest_view(session, viewer=admin_viewer(), digest_date=None, today=TODAY)
 
         assert view.digest_date == TODAY
         assert view.earlier_date == YESTERDAY
@@ -92,7 +99,7 @@ class TestDigestView:
         entry(session, profile, digest_date=YESTERDAY)
         entry(session, profile, digest_date=TODAY)
 
-        view = digest_view(session, YESTERDAY, today=TODAY)
+        view = digest_view(session, viewer=admin_viewer(), digest_date=YESTERDAY, today=TODAY)
 
         assert view.digest_date == YESTERDAY
         assert view.earlier_date is None
@@ -105,7 +112,7 @@ class TestDigestView:
         second = entry(session, ambient)
         third = entry(session, synman)
 
-        view = digest_view(session, TODAY, today=TODAY)
+        view = digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY)
 
         assert [(group.profile_name, [e.outreach_id for e in group.entries]) for group in view.profiles] == [
             ("Synman", [first.id, third.id]),
@@ -121,7 +128,9 @@ class TestDigestView:
             session, profile, curator=curator, brief="Brief text.", angle="Angle text.", artists=("Autechre",)
         )
 
-        shown = digest_view(session, TODAY, today=TODAY).profiles[0].entries[0]
+        shown = (
+            digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY).profiles[0].entries[0]
+        )
 
         assert shown.outreach_id == outreach.id
         assert shown.status == "new"
@@ -155,7 +164,7 @@ class TestDigestView:
             )
         session.flush()
 
-        view = digest_view(session, TODAY, today=TODAY)
+        view = digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY)
 
         assert [(count.label, count.count_in, count.count_out) for count in view.counts] == [
             ("Found by search", 120, 80),
@@ -166,7 +175,7 @@ class TestDigestView:
         ]
 
     def test_no_digest_yet(self, session):
-        view = digest_view(session, None, today=TODAY)
+        view = digest_view(session, viewer=admin_viewer(), digest_date=None, today=TODAY)
 
         assert view.digest_date is None
         assert view.profiles == ()
@@ -178,18 +187,22 @@ class TestDigestView:
         for _ in range(3):
             entry(session, profile)
 
-        assert digest_view(session, TODAY, today=TODAY).short
+        assert digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY).short
 
     def test_a_full_digest_is_not(self, session):
         profile = make_profile(session, "Synman")
         for _ in range(10):
             entry(session, profile)
 
-        assert not digest_view(session, TODAY, today=TODAY).short
+        assert not digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY).short
 
     def test_days_since_last_add_are_counted_from_today(self, session):
         entry(session, make_profile(session, "Synman"))
 
-        later = digest_view(session, TODAY, today=TODAY + timedelta(days=2)).profiles[0].entries[0]
+        later = (
+            digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY + timedelta(days=2))
+            .profiles[0]
+            .entries[0]
+        )
 
         assert later.days_since_last_add == 7
