@@ -15,8 +15,10 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from core import suggestions
+from core.access import require_profile
 from core.models import Profile
-from core.profiles import ProfileValidationError, get_profile
+from core.profiles import ProfileValidationError
+from web.access import CurrentViewer
 from web.db import get_db
 from web.profile_contents import render_section
 from web.templating import templates
@@ -31,9 +33,16 @@ UNREADABLE_CHOICE = "That suggestion couldn't be read. Ask again."
 
 
 @router.post("/{section}")
-def ask(request: Request, profile_id: int, section: str, db: DbSession, prompt: FormText = "") -> Response:
+def ask(
+    request: Request,
+    profile_id: int,
+    section: str,
+    db: DbSession,
+    viewer: CurrentViewer,
+    prompt: FormText = "",
+) -> Response:
+    profile = require_profile(db, viewer, profile_id)
     section = _known_section(section)
-    profile = _profile_or_404(db, profile_id)
     try:
         question = suggestions.validate_prompt(prompt)
     except ProfileValidationError as error:
@@ -50,9 +59,16 @@ def ask(request: Request, profile_id: int, section: str, db: DbSession, prompt: 
 
 
 @router.post("/{section}/add")
-def add(request: Request, profile_id: int, section: str, db: DbSession, choice: FormList = None) -> Response:
+def add(
+    request: Request,
+    profile_id: int,
+    section: str,
+    db: DbSession,
+    viewer: CurrentViewer,
+    choice: FormList = None,
+) -> Response:
+    profile = require_profile(db, viewer, profile_id)
     section = _known_section(section)
-    profile = _profile_or_404(db, profile_id)
     try:
         chosen = [_parse_choice(raw) for raw in choice or []]
         result = suggestions.add_suggestions(db, profile_id, section, chosen)
@@ -94,10 +110,3 @@ def _known_section(section: str) -> str:
     if section not in suggestions.SECTIONS:
         raise HTTPException(status_code=404)
     return section
-
-
-def _profile_or_404(db: Session, profile_id: int) -> Profile:
-    try:
-        return get_profile(db, profile_id)
-    except LookupError:
-        raise HTTPException(status_code=404) from None
