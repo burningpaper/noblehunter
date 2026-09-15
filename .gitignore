@@ -24,3 +24,5 @@ spike/*.log
 
 # Claude Code: local permissions stay on this machine
 .claude/settings.local.json
+# Isolated worktrees for feature work (the runner keeps using this checkout)
+.claude/worktrees/
