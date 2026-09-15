@@ -2627,7 +2627,7 @@ git commit -m "chore: grants for people tables; record stage 1 of artists and ac
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 8: Ship stage 1 (ask Jarred first)**
+- [x] **Step 8: Ship stage 1 (deferred; see Task 12 Step 7)**
 
 Deferred (Jarred, 2026-09-15): stages 1 and 2 ship together. See Task 12 Step 7.
 
@@ -3584,7 +3584,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 12: Walk every route as an outsider, then ship stage 2
+### Task 12: Walk every route as an outsider, then ship stages 1 and 2
 
 **Files:**
 - Test: `tests/test_web_access.py`
@@ -3826,8 +3826,9 @@ Run every step below from the **main checkout**, not this worktree.
 5. `scripts/install-worker.sh install`, from the main checkout.
 6. Smoke test:
    - `/profiles` and `/digest` look as before for Jarred (admin);
-   - `/people` works;
+   - `/people` works and shows the Synman artist;
    - signing in works;
+   - unless Jarred says otherwise, add Jarred to Synman as a member on the People page;
    - then ask Jarred for the People-page browser, keyboard and VoiceOver check.
 
 Window: between step 2 and the live deploy, the old Vercel app can't create a profile
@@ -5047,28 +5048,30 @@ EOF
 
 - [ ] **Step 5: Ship stage 3 (ask Jarred first)**
 
-With his go-ahead:
+Run every step below from the **main checkout**, not this worktree.
 
-```bash
-uv run alembic upgrade head                      # Neon: 0006 -> 0007
-uv run alembic current                           # expect 0007 (head)
-uv run python -m pipeline.cli db grant           # web may now write artist_curator_exclusions
-git push
-scripts/install-worker.sh install                # the runner must load the per-artist rules before 02:00
-```
+0. Pre-checks:
+   - no pipeline run is in progress, and it's well away from 02:00 (the nightly run starts then);
+   - Vercel's production branch is `main`;
+   - `uv run alembic current` reads `0006`.
+1. On `main`: `git merge --ff-only feature/artists-and-access`. Don't push yet.
+2. `uv run alembic upgrade head`, then `uv run alembic current` (expect `0007`).
+3. `uv run python -m pipeline.cli db grant` (web may now write `artist_curator_exclusions`).
+4. `git push origin main`, then wait for Vercel's production deploy to finish.
+5. `scripts/install-worker.sh install`, from the main checkout, before the next 02:00 run, so the runner loads the per-artist rules.
+6. Re-run Step 4's read-only check. Expected: `bad-fit curators 0`, the same number of dead curators, and the same number of outreach rows.
+7. Check the live app as Jarred:
+   - `/digest` still shows past entries.
+   - A "Bad fit" click on a test entry records without error.
+   - The runner panel shows it online.
 
-Run the Step 4 script again. Expected: `bad-fit curators 0`, the same number of dead curators, and the same number of outreach rows.
-
-Then check the live app as Jarred:
-- `/digest` still shows past entries.
-- A "Bad fit" click on a test entry records without error.
-- The runner panel shows it online.
+Rollback: if the deploy misbehaves, promote the previous Vercel deployment.
 
 ---
 
 ## Self-review notes for the executor
 
-- **Stages ship separately.** Never push stage 3's model changes before migration 0007 is on Neon.
+- **Stages 1 and 2 ship together (Task 12 Step 7); stage 3 ships separately (Task 17).** Never push stage 3's model changes before migration 0007 is on Neon.
 - **If the route walk fails after a later change, fix the route.** Don't loosen the test. It exists because one missing `require_*` line leaks another artist's work.
 - **Inline email pitching comes next,** in its own plan. It depends on `core/access.py` and uses migration 0008.
 
