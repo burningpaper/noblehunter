@@ -18,11 +18,29 @@ ADMIN = "owner@example.com"
 
 
 class TestNormalizeEmail:
-    @pytest.mark.parametrize("raw", ["  Nik@Example.COM ", "nik@example.com"])
+    @pytest.mark.parametrize(
+        "raw", ["  Nik@Example.COM ", "nik@example.com", "nik.o'neil+demos@my-label.co.uk"]
+    )
     def test_valid_addresses_are_trimmed_and_lowercased(self, raw):
-        assert normalize_email(raw) == "nik@example.com"
+        assert normalize_email(raw) == raw.strip().lower()
 
-    @pytest.mark.parametrize("raw", ["", "nik", "nik@", "@example.com", "nik@example", "n ik@example.com"])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "",
+            "nik",
+            "nik@",
+            "@example.com",
+            "nik@example",
+            "n ik@example.com",
+            "mailto:nik@example.com",
+            "nik@example.com.",
+            "nik@..com",
+            "nik@example.com;",
+            '"nik"@example.com',
+            "nik​@example.com",
+        ],
+    )
     def test_invalid_addresses_are_refused(self, raw):
         assert normalize_email(raw) is None
 
@@ -146,6 +164,40 @@ class TestAddMember:
             )
 
         assert error.value.errors["artist"] == "There's already an artist called “synman”"
+
+    def test_a_failed_add_writes_nothing(self, session):
+        with pytest.raises(PeopleValidationError):
+            add_member(
+                session, email="not-an-email", artist_id=None, new_artist_name="Nik Beats", added_by=ADMIN
+            )
+
+        assert session.query(Artist).filter_by(name="Nik Beats").first() is None
+        assert session.query(User).filter_by(email="not-an-email").first() is None
+
+    def test_whitespace_only_new_artist_name_is_explained(self, session):
+        with pytest.raises(PeopleValidationError) as error:
+            add_member(
+                session, email="nik@example.com", artist_id=None, new_artist_name="   ", added_by=ADMIN
+            )
+
+        assert error.value.errors == {"artist": "Choose an artist or name a new one"}
+
+    def test_an_overlong_new_artist_name_is_explained_under_artist(self, session):
+        with pytest.raises(PeopleValidationError) as error:
+            add_member(
+                session, email="nik@example.com", artist_id=None, new_artist_name="x" * 81, added_by=ADMIN
+            )
+
+        assert "artist" in error.value.errors
+
+    def test_the_new_artist_membership_records_who_added_it(self, session):
+        user = add_member(
+            session, email="nik@example.com", artist_id=None, new_artist_name="Nik Beats", added_by=ADMIN
+        )
+
+        artist = session.query(Artist).filter_by(name="Nik Beats").one()
+        membership = session.get(ArtistMember, (artist.id, user.id))
+        assert membership.added_by == ADMIN
 
 
 class TestRemoveMember:

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from core.models import Artist, ArtistMember, Profile, User
 
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_PATTERN = re.compile(r"^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
 MAX_EMAIL_LENGTH = 320
 MAX_ARTIST_NAME_LENGTH = 80
 
@@ -82,7 +82,10 @@ def rename_artist(session: Session, artist_id: int, name: str) -> Artist:
 def add_member(
     session: Session, *, email: str, artist_id: int | None, added_by: str, new_artist_name: str = ""
 ) -> User:
-    """Put someone on an artist: an existing one by id, or a new one by name."""
+    """Put someone on an artist: an existing one by id, or a new one by name.
+
+    When `artist_id` is given, `new_artist_name` is ignored.
+    """
     errors: dict[str, str] = {}
     clean_email = normalize_email(email)
     if clean_email is None:

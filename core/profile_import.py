@@ -26,8 +26,8 @@ from core.models import (
     SearchTermOrigin,
     SearchTermStatus,
 )
+from core.people import MAX_ARTIST_NAME_LENGTH
 from core.profile_config import ProfileConfig
-from core.profile_rules import MAX_NAME_LENGTH
 from core.text import normalize_text
 
 
@@ -60,8 +60,8 @@ def artist_for_import(session: Session, name: str | None) -> int:
     """The artist named (created if it's new), or the only artist there is."""
     if name is not None:
         clean = " ".join(name.split())
-        if not clean or len(clean) > MAX_NAME_LENGTH:
-            raise LookupError(f"Give --artist a name of 1 to {MAX_NAME_LENGTH} characters.")
+        if not clean or len(clean) > MAX_ARTIST_NAME_LENGTH:
+            raise LookupError(f"Give --artist a name of 1 to {MAX_ARTIST_NAME_LENGTH} characters.")
         artist = session.scalar(select(Artist).where(func.lower(Artist.name) == clean.lower()))
         if artist is None:
             artist = Artist(name=clean)
