@@ -10,7 +10,7 @@
 </nav>
 
 <section class="page-heading rise">
-  <p class="eyebrow">Profile</p>
+  <p class="eyebrow">{{ profile.artist.name if show_artist else "Profile" }}</p>
   {% include "profiles/_title.html" %}
 </section>
 

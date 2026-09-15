@@ -15,31 +15,36 @@
 <div class="split-layout">
   <section aria-labelledby="profiles-heading">
     <h2 id="profiles-heading" class="visually-hidden">Your profiles</h2>
-    {% if profiles %}
-    <ul class="profile-list" role="list">
-      {% for profile in profiles %}
-      <li class="rise">
-        <a class="card profile-card" href="/profiles/{{ profile.id }}">
-          <span class="profile-card__header">
-            <span class="profile-card__name">{{ profile.name }}</span>
-            {% include "profiles/_badge.html" %}
-          </span>
-          <span class="profile-card__meta">
-            {{ profile.genre_count }} {{ 'genre' if profile.genre_count == 1 else 'genres' }} ·
-            {{ profile.reference_artist_count }} reference {{ 'artist' if profile.reference_artist_count == 1 else 'artists' }} ·
-            {{ profile.track_count }} {{ 'track' if profile.track_count == 1 else 'tracks' }} ·
-            {{ profile.active_term_count }} active {{ 'term' if profile.active_term_count == 1 else 'terms' }} ·
-            {{ profile.digest_target }} per digest
-          </span>
-          {% if not profile.ready %}
-          <span class="profile-card__hint">
-            {{ profile.problems | length }} {{ 'thing' if profile.problems | length == 1 else 'things' }} to add before it can run
-          </span>
-          {% endif %}
-        </a>
-      </li>
-      {% endfor %}
-    </ul>
+    {% if profile_groups %}
+    {% for artist_name, profiles in profile_groups %}
+    <div class="profile-group">
+      {% if show_artists %}<h3 class="profile-group__title">{{ artist_name }}</h3>{% endif %}
+      <ul class="profile-list" role="list">
+        {% for profile in profiles %}
+        <li class="rise">
+          <a class="card profile-card" href="/profiles/{{ profile.id }}">
+            <span class="profile-card__header">
+              <span class="profile-card__name">{{ profile.name }}</span>
+              {% include "profiles/_badge.html" %}
+            </span>
+            <span class="profile-card__meta">
+              {{ profile.genre_count }} {{ 'genre' if profile.genre_count == 1 else 'genres' }} ·
+              {{ profile.reference_artist_count }} reference {{ 'artist' if profile.reference_artist_count == 1 else 'artists' }} ·
+              {{ profile.track_count }} {{ 'track' if profile.track_count == 1 else 'tracks' }} ·
+              {{ profile.active_term_count }} active {{ 'term' if profile.active_term_count == 1 else 'terms' }} ·
+              {{ profile.digest_target }} per digest
+            </span>
+            {% if not profile.ready %}
+            <span class="profile-card__hint">
+              {{ profile.problems | length }} {{ 'thing' if profile.problems | length == 1 else 'things' }} to add before it can run
+            </span>
+            {% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
     {% else %}
     <div class="card empty-state rise">
       <h2 class="empty-state__title">Create your first profile</h2>

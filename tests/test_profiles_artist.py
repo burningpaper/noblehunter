@@ -5,7 +5,7 @@ import pytest
 from core.profile_import import artist_for_import
 from core.profiles import ProfileValidationError, artist_choices, create_profile, update_profile_settings
 from pipeline.cli import _profile_id_by_name
-from tests.factories import make_artist
+from tests.factories import admin_viewer, make_artist
 
 
 def test_a_new_profile_belongs_to_the_chosen_artist(session):
@@ -51,7 +51,7 @@ def test_artist_choices_are_sorted_by_name(session):
     make_artist(session, "zeta")
     make_artist(session, "Alpha")
 
-    names = [name for _, name in artist_choices(session)]
+    names = [name for _, name in artist_choices(session, admin_viewer())]
 
     assert names.index("Alpha") < names.index("zeta")
 

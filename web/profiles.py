@@ -5,20 +5,22 @@ swap their own fragment back in, so a validation error (HTTP 422) shows up right
 it happened without a page reload.
 """
 
+from itertools import groupby
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from core.access import NotVisible, Viewer, require_profile
 from core.models import Profile
 from core.profile_rules import DEFAULT_DIGEST_TARGET
 from core.profiles import (
+    ProfileSummary,
     ProfileValidationError,
     activation_problems,
     artist_choices,
     create_profile,
-    get_profile,
     list_profiles,
     set_profile_active,
     update_profile_settings,
@@ -38,10 +40,11 @@ FormText = Annotated[str, Form()]
 @router.get("")
 def profiles_page(request: Request, db: DbSession, viewer: CurrentViewer) -> Response:
     context = {
-        "profiles": list_profiles(db),
+        "profile_groups": _grouped(list_profiles(db, viewer)),
+        "show_artists": _shows_artists(viewer),
         "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET, "artist_id": ""},
         "errors": {},
-        "artist_choices": artist_choices(db),
+        "artist_choices": artist_choices(db, viewer),
         **panel_context(db, viewer),
         **(budget_context(db) if viewer.is_admin else {}),
     }
@@ -52,28 +55,33 @@ def profiles_page(request: Request, db: DbSession, viewer: CurrentViewer) -> Res
 def create(
     request: Request,
     db: DbSession,
+    viewer: CurrentViewer,
     name: FormText = "",
     digest_target: FormText = "",
     artist_id: FormText = "",
 ) -> Response:
+    chosen = form_id(artist_id)
+    if chosen and not viewer.can_see_artist(chosen):
+        raise NotVisible(f"Artist {chosen} not found")
     try:
-        profile = create_profile(db, form_id(artist_id), name, digest_target)
+        profile = create_profile(db, chosen, name, digest_target)
         db.commit()
     except ProfileValidationError as error:
         context = {
             "form": {"name": name, "digest_target": digest_target, "artist_id": artist_id},
             "errors": error.errors,
-            "artist_choices": artist_choices(db),
+            "artist_choices": artist_choices(db, viewer),
         }
         return templates.TemplateResponse(request, "profiles/_create_form.html", context, status_code=422)
     return _redirect(request, f"/profiles/{profile.id}")
 
 
 @router.get("/{profile_id}")
-def profile_page(request: Request, profile_id: int, db: DbSession) -> Response:
-    profile = _profile_or_404(db, profile_id)
+def profile_page(request: Request, profile_id: int, db: DbSession, viewer: CurrentViewer) -> Response:
+    profile = require_profile(db, viewer, profile_id)
     context = {
         "profile": profile,
+        "show_artist": _shows_artists(viewer),
         "form": _settings_form(profile),
         "errors": {},
         "saved": False,
@@ -87,11 +95,12 @@ def save_settings(
     request: Request,
     profile_id: int,
     db: DbSession,
+    viewer: CurrentViewer,
     name: FormText = "",
     digest_target: FormText = "",
     min_followers: FormText = "",
 ) -> Response:
-    profile = _profile_or_404(db, profile_id)
+    profile = require_profile(db, viewer, profile_id)
     try:
         # A blank floor (e.g. an older form) keeps the current value.
         update_profile_settings(db, profile_id, name, digest_target, min_followers.strip() or None)
@@ -113,17 +122,17 @@ def _settings_form(profile: Profile) -> dict:
 
 
 @router.post("/{profile_id}/activate")
-def activate(request: Request, profile_id: int, db: DbSession) -> Response:
-    return _change_status(request, db, profile_id, active=True)
+def activate(request: Request, profile_id: int, db: DbSession, viewer: CurrentViewer) -> Response:
+    return _change_status(request, db, viewer, profile_id, active=True)
 
 
 @router.post("/{profile_id}/pause")
-def pause(request: Request, profile_id: int, db: DbSession) -> Response:
-    return _change_status(request, db, profile_id, active=False)
+def pause(request: Request, profile_id: int, db: DbSession, viewer: CurrentViewer) -> Response:
+    return _change_status(request, db, viewer, profile_id, active=False)
 
 
-def _change_status(request: Request, db: Session, profile_id: int, active: bool) -> Response:
-    profile = _profile_or_404(db, profile_id)
+def _change_status(request: Request, db: Session, viewer: Viewer, profile_id: int, active: bool) -> Response:
+    profile = require_profile(db, viewer, profile_id)
     status_code, refused = 200, False
     try:
         set_profile_active(db, profile_id, active)
@@ -134,11 +143,15 @@ def _change_status(request: Request, db: Session, profile_id: int, active: bool)
     return templates.TemplateResponse(request, "profiles/_status.html", context, status_code=status_code)
 
 
-def _profile_or_404(db: Session, profile_id: int) -> Profile:
-    try:
-        return get_profile(db, profile_id)
-    except LookupError:
-        raise HTTPException(status_code=404) from None
+def _grouped(summaries: list[ProfileSummary]) -> list[tuple[str, list[ProfileSummary]]]:
+    """Profiles in (artist name, profiles) groups, keeping the list's order."""
+    return [
+        (artist_name, list(group)) for artist_name, group in groupby(summaries, key=lambda s: s.artist_name)
+    ]
+
+
+def _shows_artists(viewer: Viewer) -> bool:
+    return viewer.is_admin or len(viewer.artist_ids) > 1
 
 
 def _redirect(request: Request, url: str) -> Response:

@@ -11,7 +11,7 @@ from core.profiles import (
     set_profile_active,
     update_profile_settings,
 )
-from tests.factories import default_artist_id
+from tests.factories import admin_viewer, default_artist_id
 from tests.profile_helpers import add_contents
 
 
@@ -150,7 +150,7 @@ class TestListProfiles:
         ready = add_contents(session, create_profile(session, default_artist_id(session), "Beta"), terms=6)
         create_profile(session, default_artist_id(session), "alpha")
 
-        summaries = list_profiles(session)
+        summaries = list_profiles(session, admin_viewer())
 
         assert [s.name for s in summaries] == ["alpha", "Beta"]
         beta = summaries[1]

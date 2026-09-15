@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from core.access import Viewer, visible_to
 from core.models import Artist, Profile, SearchTermStatus
 from core.profile_rules import (
     DEFAULT_DIGEST_TARGET,
@@ -36,6 +37,8 @@ class ProfileValidationError(ValueError):
 @dataclass(frozen=True)
 class ProfileSummary:
     id: int
+    artist_id: int
+    artist_name: str
     name: str
     is_active: bool
     digest_target: int
@@ -88,9 +91,13 @@ def update_profile_settings(
     return profile
 
 
-def artist_choices(session: Session) -> list[tuple[int, str]]:
-    """Every artist as (id, name), for the new-profile form. Stage 2 narrows this to the viewer's."""
-    rows = session.execute(select(Artist.id, Artist.name).order_by(func.lower(Artist.name), Artist.id))
+def artist_choices(session: Session, viewer: Viewer) -> list[tuple[int, str]]:
+    """The artists this viewer may create profiles under, as (id, name)."""
+    rows = session.execute(
+        select(Artist.id, Artist.name)
+        .where(visible_to(viewer, Artist.id))
+        .order_by(func.lower(Artist.name), Artist.id)
+    )
     return [(artist_id, name) for artist_id, name in rows]
 
 
@@ -109,16 +116,19 @@ def activation_problems(profile: Profile) -> list[str]:
     return _problems(*_counts(profile))
 
 
-def list_profiles(session: Session) -> list[ProfileSummary]:
+def list_profiles(session: Session, viewer: Viewer) -> list[ProfileSummary]:
     profiles = session.scalars(
         select(Profile)
+        .join(Artist, Artist.id == Profile.artist_id)
+        .where(visible_to(viewer, Profile.artist_id))
         .options(
+            selectinload(Profile.artist),
             selectinload(Profile.genres),
             selectinload(Profile.reference_artists),
             selectinload(Profile.tracks),
             selectinload(Profile.search_terms),
         )
-        .order_by(func.lower(Profile.name), Profile.id)
+        .order_by(func.lower(Artist.name), Artist.id, func.lower(Profile.name), Profile.id)
     )
     return [_summarise(profile) for profile in profiles]
 
@@ -127,6 +137,8 @@ def _summarise(profile: Profile) -> ProfileSummary:
     genres, artists, tracks, terms = _counts(profile)
     return ProfileSummary(
         id=profile.id,
+        artist_id=profile.artist_id,
+        artist_name=profile.artist.name,
         name=profile.name,
         is_active=profile.is_active,
         digest_target=profile.digest_target,
