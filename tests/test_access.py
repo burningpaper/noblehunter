@@ -82,7 +82,7 @@ class TestViewerFor:
         # this would collide with an ordinary admin address of the same letters.
         admins = frozenset({"kelvin@example.com"})
 
-        assert viewer_for(session, "Kelvin@example.com", admins) is None
+        assert viewer_for(session, "\u212aelvin@example.com", admins) is None
 
     def test_an_admin_email_with_spacing_and_case_still_matches(self, session):
         viewer = viewer_for(session, "owner@example.com", frozenset({" Owner@Example.com "}))
@@ -123,6 +123,10 @@ class TestRecordSignIn:
 
         assert len(user.name) == 200
         assert user.name == "N" * 200
+
+    def test_an_unusable_email_is_rejected(self, session):
+        with pytest.raises(ValueError):
+            record_sign_in(session, email="   ", name="Nik", picture_url=None, now=NOW)
 
 
 class TestVisibleTo:
@@ -196,6 +200,12 @@ class TestRequire:
     def test_an_out_of_range_profile_id_is_not_visible(self, session, profile_id):
         with pytest.raises(NotVisible):
             require_profile(session, admin_viewer(), profile_id)
+
+    def test_the_largest_in_range_profile_id_reaches_the_database(self, session):
+        # 2**31 - 1 is still a valid `integer`, so it must reach the database (and be
+        # reported not found there) rather than be rejected by the range check.
+        with pytest.raises(NotVisible):
+            require_profile(session, admin_viewer(), 2**31 - 1)
 
     def test_an_admin_gets_any_profile(self, session):
         profile = make_profile(session, artist=make_artist(session))

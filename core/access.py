@@ -38,22 +38,32 @@ class AdminOnly(Exception):
 
 
 # Postgres's `integer` range. An id outside this can't exist, so treat it as not found
-# rather than let asyncpg raise DataError and abort the transaction.
+# rather than let psycopg raise DataError and abort the transaction. This matches the
+# `Integer` id columns on Profile and Outreach; change it if those become BigInteger.
 MAX_POSTGRES_INT = 2**31 - 1
 
 # users.name is String(200); truncate rather than let Postgres reject a long display name.
 MAX_NAME_LENGTH = 200
 
 
-def viewer_for(session: Session, email: str, admin_emails: frozenset[str]) -> Viewer | None:
-    """The viewer for a signed-in email, or None if that email has no access at all."""
+def _clean_email(email: str) -> str | None:
+    """A stripped, lowercased email, or None for empty or non-ASCII input.
+
+    Checked before lowering: str.lower() maps some non-ASCII characters onto ASCII ones
+    (e.g. the Kelvin sign lowercases to plain "k"), which could otherwise collide with
+    someone else's address.
+    """
     stripped = email.strip()
     if not stripped or not stripped.isascii():
-        # Checked before lowering: str.lower() maps some non-ASCII characters onto ASCII
-        # ones (e.g. the Kelvin sign lowercases to plain "k"), which could otherwise
-        # collide with someone else's address.
         return None
-    clean = stripped.lower()
+    return stripped.lower()
+
+
+def viewer_for(session: Session, email: str, admin_emails: frozenset[str]) -> Viewer | None:
+    """The viewer for a signed-in email, or None if that email has no access at all."""
+    clean = _clean_email(email)
+    if clean is None:
+        return None
     admins = frozenset(admin.strip().lower() for admin in admin_emails)
     artist_ids = frozenset(
         session.scalars(
@@ -72,7 +82,9 @@ def record_sign_in(
     session: Session, *, email: str, name: str | None, picture_url: str | None, now: datetime
 ) -> User:
     """Create or refresh the user row for someone who just signed in."""
-    clean = email.strip().lower()
+    clean = _clean_email(email)
+    if clean is None:
+        raise ValueError(f"Not a usable email: {email!r}")
     user = session.scalar(select(User).where(User.email == clean))
     if user is None:
         user = User(email=clean)
