@@ -87,7 +87,7 @@ Instagram stays manual. Meta's API only lets a business reply to someone who wro
 
 Gmail and Claude code live in `core/` because both the web app and the runner use them. The web app still never imports `pipeline/`. Every web route goes through `core/access.py` from the artists project, so someone who isn't on the artist gets 404.
 
-### Data (migration 0007)
+### Data (migration 0008; Artists and access uses 0006 and 0007)
 
 - **`mail_accounts`** columns:
   - `id`

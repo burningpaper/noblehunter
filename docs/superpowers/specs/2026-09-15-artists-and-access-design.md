@@ -124,10 +124,11 @@ A new artist's profiles are matched only against playlists found or re-checked a
   - the unique constraint on `name` becomes unique on `(artist_id, name)`.
 - **`outreach`** gains `artist_id` (not null). Its EXCLUDE constraint is replaced as above.
 - **Data migration:**
-  1. Create artist "Synman".
+  1. If any profiles exist, create artist "Synman".
   2. Point every profile and outreach row at it.
   3. Move bad-fit marks.
-  4. Create a user for each `ALLOWED_EMAILS` address, as a member of Synman.
+
+  On an empty database (tests, a fresh install) nothing is created. The migration never creates users: it can't see `ALLOWED_EMAILS`, which lives in Vercel. A `users` row is created or updated on every successful sign-in. Admins need no membership, since they see everything, and Jarred can add himself to Synman on the People page if he wants.
 - **Roles:**
   - `noble_web` gets write on `users`, `artists`, `artist_members` and `artist_curator_exclusions`.
   - `noble_pipeline` gets read on the new tables. Its existing grants cover `outreach` and `curators`.
