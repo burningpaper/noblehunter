@@ -4,16 +4,20 @@ A new route must be added to ROUTES, or test_every_route_is_covered fails. That 
 access can't be forgotten quietly.
 """
 
+import re
+
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 from starlette.routing import Mount
+from starlette.staticfiles import StaticFiles
 
 from core.access import MAX_POSTGRES_INT
 from tests.profile_helpers import TRACK_URL
 
 OK, FORBIDDEN, NOT_FOUND = 200, 403, 404
 OUT_OF_RANGE = MAX_POSTGRES_INT + 1
+STATIC_MOUNT = "/static"
 
 # Usable without access to any artist: signing in and out, and the health check.
 EXEMPT = {
@@ -58,8 +62,9 @@ ROUTES = {
     ("POST", "/people/artists/{artist_id}/rename"): FORBIDDEN,
     ("POST", "/people/artists/{artist_id}/members/{user_id}/remove"): FORBIDDEN,
 }
+WRITE_ROUTES = sorted(route for route in ROUTES if route[0] != "GET")
 
-# Valid-looking forms, so a route that forgot its access check would actually do something.
+# Valid forms, so a route that forgot its access check would actually do something.
 FORMS = {
     "/profiles": {"name": "Stolen", "digest_target": "10"},
     "/profiles/{profile_id}/settings": {"name": "Renamed", "digest_target": "10", "min_followers": "0"},
@@ -78,7 +83,9 @@ FORMS = {
     "/people/artists/{artist_id}/rename": {"name": "Stolen"},
 }
 
-# Every id a URL can carry. `section` and `day` aren't ids.
+# Every id the walk fills in, by its key in the ids dict. These are the URL placeholders, except
+# `reference_artist_id`, which fills `{artist_id}` on profile routes (there it's a reference
+# artist on the profile, while on People routes `{artist_id}` is an Artist).
 ID_PARAMS = (
     "profile_id",
     "genre_id",
@@ -90,9 +97,11 @@ ID_PARAMS = (
     "artist_id",
     "user_id",
 )
-# Ids of things inside a profile, checked only after the profile itself is found.
-CHILD_ID_PARAMS = ("genre_id", "reference_artist_id", "signal_id", "track_id", "term_id")
-CHILD_ID_PATH_PARTS = ("{genre_id}", "{artist_id}", "{signal_id}", "{track_id}", "{term_id}")
+FORM_ARTIST_ID = "form_artist_id"
+# Routes whose form carries an artist id: creating a profile, adding a member.
+FORM_ARTIST_ID_ROUTES = {("POST", "/profiles"), ("POST", "/people/members")}
+NOT_IDS = {"section", "day"}
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
 def registered_routes(app: FastAPI) -> set[tuple[str, str]]:
@@ -100,24 +109,36 @@ def registered_routes(app: FastAPI) -> set[tuple[str, str]]:
 
     FastAPI 0.141 keeps included routers nested inside `app.routes`, so scanning that list for
     APIRoutes finds only `/` and `/health`. `iter_route_contexts` flattens them, and its `path`
-    includes any prefix given to `include_router`.
+    includes any prefix given to `include_router`. Anything the walk can't call (a mounted
+    sub-app other than the static files, a plain Starlette route) fails loudly instead of being
+    skipped, because a route the walk can't see is a route nobody checked.
     """
     found = set()
     for context in iter_route_contexts(app.routes):
-        if isinstance(context.original_route, Mount):  # /static: files only, nothing per artist
-            continue
-        assert isinstance(context.original_route, APIRoute), f"The walk can't call {context.path!r}"
+        route = context.original_route
+        if isinstance(route, Mount) and context.path == STATIC_MOUNT and isinstance(route.app, StaticFiles):
+            continue  # files only, nothing per artist
+        if not isinstance(route, APIRoute):
+            raise AssertionError(
+                f"The route walk can't see inside {type(route).__name__} {context.path!r}. "
+                "Give its routes to the app as APIRoutes, or extend tests/route_walk.py to walk them."
+            )
         found.update((method, context.path) for method in context.methods)
     return found
 
 
-# Routes whose form carries an artist id: creating a profile, adding a member.
-FORM_ARTIST_ID_ROUTES = {("POST", "/profiles"), ("POST", "/people/members")}
-
-
-def takes_an_id(method: str, path: str) -> bool:
-    """Whether the route's URL or form carries an id the out-of-range sweep can spoil."""
-    return "_id}" in path or (method, path) in FORM_ARTIST_ID_ROUTES
+def id_positions(method: str, path: str) -> list[str]:
+    """Each id the route takes, as its key in the ids dict, or FORM_ARTIST_ID for the form's artist."""
+    positions = []
+    for name in PLACEHOLDER.findall(path):
+        if name in NOT_IDS:
+            continue
+        if name == "artist_id" and path.startswith("/profiles/"):
+            name = "reference_artist_id"
+        positions.append(name)
+    if (method, path) in FORM_ARTIST_ID_ROUTES:
+        positions.append(FORM_ARTIST_ID)
+    return positions
 
 
 def fill_path(path: str, ids: dict) -> str:

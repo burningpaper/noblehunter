@@ -5,11 +5,12 @@ admins, everyone in ALLOWED_EMAILS, see everything. Anything a viewer can't see 
 reported exactly like something that doesn't exist, so nobody can learn what another artist
 has.
 
-Every page and action except sign-in requires a Viewer, and admin-only actions (the People
-page, Run now, the Claude budget) check require_admin. Profiles, profile editing, Ask Claude,
-the digest and verdicts scope to the viewer's own artists through visible_to, require_profile
-and require_outreach. tests/test_web_access.py walks every route as someone on a different
-artist to check none forgot, and fails when a new route isn't listed there.
+Every page and action except sign-in, /health and /static requires a Viewer, and admin-only
+actions (the People page, Run now, the Claude budget) check require_admin. Profiles, profile
+editing, Ask Claude, the digest and verdicts scope to the viewer's own artists through
+visible_to, require_profile and require_outreach. tests/test_web_access.py walks every route as
+someone on a different artist to check none forgot. The route table lives in
+tests/route_walk.py, and the walk fails when a new route isn't listed there.
 
 Access is worked out afresh on every request (see web/access.py), so taking someone off an
 artist stops them on their next click, not when their session cookie expires.
