@@ -64,6 +64,12 @@ class TestWebRole:
         assert can_on_column(roles, WEB, "curators", "excluded_at", "UPDATE")
         assert can_on_column(roles, WEB, "curators", "exclusion_reason", "UPDATE")
 
+    @pytest.mark.parametrize("table", ["users", "artists", "artist_members"])
+    def test_can_manage_people(self, roles, table):
+        assert all(
+            can(roles, WEB, table, privilege) for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
+        )
+
     @pytest.mark.parametrize(
         "table, privilege",
         [
@@ -87,6 +93,10 @@ class TestPipelineRole:
     )
     def test_can_read_and_write_data(self, roles, table):
         assert all(can(roles, PIPELINE, table, p) for p in ("SELECT", "INSERT", "UPDATE", "DELETE"))
+
+    @pytest.mark.parametrize("table", ["users", "artists", "artist_members"])
+    def test_can_read_people(self, roles, table):
+        assert can(roles, PIPELINE, table, "SELECT")
 
     def test_can_use_id_sequences(self, roles):
         assert roles.scalar(

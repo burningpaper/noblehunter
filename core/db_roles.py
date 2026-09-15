@@ -4,9 +4,10 @@ The roles are created here with SQL, never in the Neon console (which adds roles
 `neon_superuser` and would make these grants meaningless). Each then gets exactly what
 it needs, run as the database owner:
 
-- web (Vercel, public internet): read everything; manage profile settings, search terms
-  and "Run now" requests; record verdicts on outreach and exclusions on curators, column
-  by column. It can't rewrite pipeline results, delete digest history or change schema.
+- web (Vercel, public internet): read everything; manage people and artists, profile
+  settings, search terms and "Run now" requests; record verdicts on outreach and
+  exclusions on curators, column by column. It can't rewrite pipeline results, delete
+  digest history or change schema.
 - pipeline (Mac Mini): read and write all data tables; read-only on migration history;
   no schema changes.
 
@@ -33,6 +34,9 @@ WEB_EDITABLE_TABLES = (
     "search_terms",
     "run_requests",
     "app_settings",
+    "users",
+    "artists",
+    "artist_members",
 )
 WEB_OUTREACH_COLUMNS = ("status", "status_changed_at", "pitched_at", "notes")
 WEB_CURATOR_COLUMNS = ("excluded_at", "exclusion_reason")

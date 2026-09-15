@@ -139,7 +139,7 @@ A new artist's profiles are matched only against playlists found or re-checked a
 | Module | One job |
 |---|---|
 | `core/people.py` | Users, artists and memberships: add a member (creating the user if needed), remove, rename, list |
-| `core/access.py` | The single source of "who can see what": `Viewer(email, is_admin, artist_ids)`, `viewer_for(session, email, admin_emails)` (None means no access), and `visible_profiles`, `can_see_profile`, `can_see_outreach`, `require_*` (raising `NotVisible`) |
+| `core/access.py` | The single source of "who can see what": `Viewer(email, is_admin, artist_ids)`, `viewer_for(session, email, admin_emails)` (None means no access), `record_sign_in`, `visible_to` (a query filter), `require_profile`, `require_outreach` and `require_admin` (raising `NotVisible` or `AdminOnly`) |
 | `core/exclusion.py` | Existing module, now artist-aware as described above |
 | `web/access.py` | FastAPI dependency: builds the `Viewer` per request, maps `NotVisible` to 404, and provides `require_admin` |
 | `web/people.py` | The People page and its actions |
@@ -159,7 +159,7 @@ Read functions in `core/digest_view.py` and `core/profiles.py` gain a viewer arg
 
 ## Error handling
 
-- **No access.** Something belonging to another artist returns 404 with the normal not-found page; htmx requests get a 404 fragment. An admin-only action attempted by a member returns 403.
+- **No access.** Something belonging to another artist returns 404 with the normal not-found page. htmx never sends `Accept: text/html`, and `base.html`'s htmx config doesn't swap 4xx responses, so a non-visible htmx request gets a plain JSON 404 instead and the click just does nothing. An admin-only action attempted by a member returns 403: browsers see an "Only admins can do that" page, everything else gets JSON.
 - **Removed mid-session.** The next request clears the session and shows access-denied.
 - **Adding a member.** An invalid email, or adding someone already on the artist, shows an inline error on the People page. Admins can't be removed on the People page: admin status comes only from `ALLOWED_EMAILS`.
 - **Nothing to show.** A member with no artists can't sign in. An artist with no members still shows on the People page.

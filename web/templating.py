@@ -22,7 +22,9 @@ def auth_context(request: Request) -> dict:
     return {
         "current_user": user,
         "csrf_token": request.session.get(SESSION_CSRF) if has_session else None,
-        # Only decides what to *show*: every admin action is also enforced server-side by AdminViewer.
+        # Pages rendered without a per-request viewer get is_admin False: login, access-denied,
+        # and a 404 for a URL that matches no route. Display only — every admin action is still
+        # enforced server-side by AdminViewer.
         "is_admin": viewer.is_admin if viewer is not None else False,
     }
 

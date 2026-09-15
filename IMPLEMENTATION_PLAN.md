@@ -17,7 +17,8 @@ Plan for the Curator Discovery Pipeline in `spec.md`, updated with Jarred's deci
 | Re-checks | `no-contact` and not-alive rejections are re-checked after 90 days. Pay-to-play and bot (`real`) rejections are permanent | 2026-09-13 |
 | Repeat playlists | The same playlist **may** be pitched again for the same profile after 90 days (still bound by the curator's 90-day rule) | 2026-09-13 |
 | Digest and verdicts | **Digest page in the web app** with verdict buttons, plus a short morning **email linking to it** | 2026-09-13 |
-| Web login | **Sign in with Google**, restricted to burningpaper@gmail.com | 2026-09-13 |
+| Web login | Sign in with Google. Admins are listed in ALLOWED_EMAILS; other people are added to an artist on the People page | 2026-09-15 |
+| Several artists | Other artists can use Noble Hunter. Each person sees only their own artists' profiles, digests and mail; admins see everything. Curators are separate per artist (own 90-day window and bad-fit list; dead is shared) | 2026-09-15 |
 | Visual direction | **Dark studio**: near-black ground, one restrained accent, clean sans-serif, generous spacing, subtle motion | 2026-09-13 |
 | Configuration | **Everything is configured in the web app**, per profile (and per search term where it applies). YAML import is only a bootstrap/backup tool; Jarred enters Synman himself | 2026-09-14 |
 | Minimum size | Playlists **under 50 followers aren't worth pitching**. The floor is a per-profile setting (default 50). Too-small playlists are re-checked later, since they can grow | 2026-09-14 |
@@ -220,6 +221,11 @@ Status: Not Started
 Goal: Review a week of failures, mainly contact resolution and yield per profile, and adjust.
 Success Criteria: Yield is measured daily against the spec's first-week expectations. Changes are logged in `.claude/DEVELOPER_LOGS.md`.
 Status: Not Started
+
+## Stage 11: Artists and access
+Goal: Several artists use Noble Hunter without seeing each other's work or competing for curators.
+Success Criteria: Plan tasks in docs/superpowers/plans/2026-09-15-artists-and-access.md pass; a member of one artist gets 404 for every route on another artist's data; the same curator can reach two artists' digests on one night.
+Status: In Progress (stage 1 of 3 complete)
 
 ---
 
