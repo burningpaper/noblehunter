@@ -13,9 +13,10 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from core.access import Viewer
 from core.run_status import request_run, run_status
+from web.access import AdminViewer, CurrentViewer
 from web.db import get_db
-from web.sessions import current_user
 from web.templating import templates
 
 router = APIRouter(prefix="/runs")
@@ -23,23 +24,22 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/status")
-def status_panel(request: Request, db: DbSession) -> Response:
-    return _render_panel(request, db)
+def status_panel(request: Request, db: DbSession, viewer: CurrentViewer) -> Response:
+    return _render_panel(request, db, viewer)
 
 
 @router.post("/request")
-def run_now(request: Request, db: DbSession) -> Response:
-    user = current_user(request) or {}
-    request_run(db, requested_by=str(user.get("email") or "unknown"))
+def run_now(request: Request, db: DbSession, viewer: AdminViewer) -> Response:
+    request_run(db, requested_by=viewer.email)
     db.commit()
-    return _render_panel(request, db)
+    return _render_panel(request, db, viewer)
 
 
-def panel_context(db: Session) -> dict:
+def panel_context(db: Session, viewer: Viewer) -> dict:
     now = datetime.now(UTC)
-    return {"run_status_view": run_status(db, now), "now": now}
+    return {"run_status_view": run_status(db, now), "now": now, "can_run_now": viewer.is_admin}
 
 
-def _render_panel(request: Request, db: Session) -> Response:
-    context = {**panel_context(db), "refreshed": True}
+def _render_panel(request: Request, db: Session, viewer: Viewer) -> Response:
+    context = {**panel_context(db, viewer), "refreshed": True}
     return templates.TemplateResponse(request, "runs/_panel.html", context)

@@ -52,13 +52,15 @@
     </p>
     {% elif status.current_run %}
     <p class="run-status__note">A run is in progress.</p>
-    {% else %}
+    {% elif can_run_now %}
     <button class="button button--primary" type="button" hx-post="/runs/request" hx-target="#run-status"
             hx-swap="outerHTML" hx-disabled-elt="this">
       Run now
       <span class="htmx-indicator spinner" aria-hidden="true"></span>
     </button>
     <p class="run-status__note">Searches for every active profile.</p>
+    {% else %}
+    <p class="run-status__note">The runner searches for every active profile each night.</p>
     {% endif %}
   </div>
 </section>

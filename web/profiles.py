@@ -23,6 +23,7 @@ from core.profiles import (
     set_profile_active,
     update_profile_settings,
 )
+from web.access import CurrentViewer
 from web.budget import budget_context
 from web.db import get_db
 from web.forms import form_id
@@ -35,13 +36,13 @@ FormText = Annotated[str, Form()]
 
 
 @router.get("")
-def profiles_page(request: Request, db: DbSession) -> Response:
+def profiles_page(request: Request, db: DbSession, viewer: CurrentViewer) -> Response:
     context = {
         "profiles": list_profiles(db),
         "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET, "artist_id": ""},
         "errors": {},
         "artist_choices": artist_choices(db),
-        **panel_context(db),
+        **panel_context(db, viewer),
         **budget_context(db),
     }
     return templates.TemplateResponse(request, "profiles/list.html", context)

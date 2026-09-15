@@ -53,7 +53,7 @@
 
   <div class="stack">
     {% include "runs/_panel.html" %}
-    {% include "settings/_budget.html" %}
+    {% if is_admin %}{% include "settings/_budget.html" %}{% endif %}
     <aside class="card rise" aria-labelledby="new-profile-heading">
       <h2 id="new-profile-heading" class="card__title">New profile</h2>
       {% include "profiles/_create_form.html" %}

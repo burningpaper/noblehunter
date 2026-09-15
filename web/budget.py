@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from core.app_settings import SettingsValidationError, nightly_claude_budget, set_nightly_claude_budget
+from web.access import AdminViewer
 from web.db import get_db
 from web.templating import templates
 
@@ -16,7 +17,7 @@ FormText = Annotated[str, Form()]
 
 
 @router.post("/claude-budget")
-def save_budget(request: Request, db: DbSession, budget: FormText = "") -> Response:
+def save_budget(request: Request, db: DbSession, viewer: AdminViewer, budget: FormText = "") -> Response:
     try:
         saved = set_nightly_claude_budget(db, budget)
         db.commit()
