@@ -33,15 +33,28 @@ class NotVisible(LookupError):
     """Missing, or on an artist the viewer isn't part of. The web app answers 404 either way."""
 
 
-class AdminOnly(PermissionError):
+class AdminOnly(Exception):
     """Only admins may do this. The web app answers 403."""
+
+
+# Postgres's `integer` range. An id outside this can't exist, so treat it as not found
+# rather than let asyncpg raise DataError and abort the transaction.
+MAX_POSTGRES_INT = 2**31 - 1
+
+# users.name is String(200); truncate rather than let Postgres reject a long display name.
+MAX_NAME_LENGTH = 200
 
 
 def viewer_for(session: Session, email: str, admin_emails: frozenset[str]) -> Viewer | None:
     """The viewer for a signed-in email, or None if that email has no access at all."""
-    clean = email.strip().lower()
-    if not clean:
+    stripped = email.strip()
+    if not stripped or not stripped.isascii():
+        # Checked before lowering: str.lower() maps some non-ASCII characters onto ASCII
+        # ones (e.g. the Kelvin sign lowercases to plain "k"), which could otherwise
+        # collide with someone else's address.
         return None
+    clean = stripped.lower()
+    admins = frozenset(admin.strip().lower() for admin in admin_emails)
     artist_ids = frozenset(
         session.scalars(
             select(ArtistMember.artist_id)
@@ -49,7 +62,7 @@ def viewer_for(session: Session, email: str, admin_emails: frozenset[str]) -> Vi
             .where(User.email == clean)
         )
     )
-    is_admin = clean in admin_emails
+    is_admin = clean in admins
     if not is_admin and not artist_ids:
         return None
     return Viewer(email=clean, is_admin=is_admin, artist_ids=artist_ids)
@@ -64,21 +77,30 @@ def record_sign_in(
     if user is None:
         user = User(email=clean)
         session.add(user)
-    user.name = name or user.name
+    user.name = (name or "")[:MAX_NAME_LENGTH] or user.name
+    # picture_url deliberately mirrors Google's current value, including clearing it
+    # (unlike name, which keeps the last known one when Google doesn't send one).
     user.picture_url = picture_url
     user.last_signed_in_at = now
     session.flush()
     return user
 
 
-def visible_to(viewer: Viewer, artist_column) -> ColumnElement[bool]:
-    """A WHERE clause keeping rows on the viewer's artists: every row for an admin."""
+def visible_to(viewer: Viewer, artist_column: ColumnElement[int]) -> ColumnElement[bool]:
+    """A WHERE clause keeping rows on the viewer's artists: every row for an admin.
+
+    The query must already join in the table `artist_column` belongs to, or SQLAlchemy
+    will silently cross-join it and this clause will not actually restrict anything;
+    pytest is configured to turn that "cartesian product" warning into an error.
+    """
     if viewer.is_admin:
         return true()
     return artist_column.in_(sorted(viewer.artist_ids))
 
 
 def require_profile(session: Session, viewer: Viewer, profile_id: int) -> Profile:
+    if not 0 < profile_id <= MAX_POSTGRES_INT:
+        raise NotVisible(f"Profile {profile_id} not found")
     profile = session.get(Profile, profile_id)
     if profile is None or not viewer.can_see_artist(profile.artist_id):
         raise NotVisible(f"Profile {profile_id} not found")
@@ -86,6 +108,8 @@ def require_profile(session: Session, viewer: Viewer, profile_id: int) -> Profil
 
 
 def require_outreach(session: Session, viewer: Viewer, outreach_id: int) -> Outreach:
+    if not 0 < outreach_id <= MAX_POSTGRES_INT:
+        raise NotVisible(f"Outreach {outreach_id} not found")
     outreach = session.get(Outreach, outreach_id)
     if outreach is None or not viewer.can_see_artist(outreach.profile.artist_id):
         raise NotVisible(f"Outreach {outreach_id} not found")

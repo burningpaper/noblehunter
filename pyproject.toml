@@ -44,6 +44,9 @@ entrypoint = "web.app:app"
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = ["live: hits real external services; run with --run-live"]
+# A forgotten join makes visible_to() a no-op that leaks every row; SQLAlchemy only warns
+# about the resulting cartesian product, so promote that warning to a test failure.
+filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
 
 [tool.ruff]
 line-length = 110
