@@ -62,6 +62,8 @@
   </section>
   {% endfor %}
 
+  {# The counts total every artist's pipeline activity, so they're for admins only. core/digest_view.py
+     already returns no counts for members (tested); `is_admin` here is a second guard, not the only one. #}
   {% if view.counts and is_admin %}
   <section class="card digest-counts" aria-labelledby="digest-counts-heading">
     <h2 id="digest-counts-heading" class="card__title">The night in numbers</h2>

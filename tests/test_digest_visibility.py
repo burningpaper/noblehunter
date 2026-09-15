@@ -307,4 +307,14 @@ class TestDigestDayVisibility:
 
         assert only_theirs.status_code == truly_empty.status_code == 200
         assert "Nothing on this night" in only_theirs.text
-        assert "Nothing on this night" in truly_empty.text
+        assert page_without_its_date(only_theirs.text, NIGHT) == page_without_its_date(
+            truly_empty.text, NO_ENTRIES_AT_ALL
+        )
+
+
+def page_without_its_date(html: str, day: date) -> str:
+    """The page with its CSRF token and every rendering of `day` blanked, so two nights compare equal."""
+    html = re.sub(r'"X-CSRF-Token":\s*"[^"]+"', '"X-CSRF-Token": ""', html)
+    for rendered in (day.strftime("%-d %B %Y"), day.strftime("%A %-d %B"), day.isoformat()):
+        html = html.replace(rendered, "DAY")
+    return html
