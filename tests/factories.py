@@ -5,6 +5,7 @@ from itertools import count
 
 from sqlalchemy import select
 
+from core.access import Viewer
 from core.contacts import contact_key, email_domain_key
 from core.models import (
     Artist,
@@ -123,3 +124,14 @@ def make_contact(session, curator: Curator, route_type: str = "email", value: st
     session.add(contact)
     session.flush()
     return contact
+
+
+ADMIN_EMAIL = "owner@example.com"
+
+
+def admin_viewer() -> Viewer:
+    return Viewer(email=ADMIN_EMAIL, is_admin=True, artist_ids=frozenset())
+
+
+def member_viewer(*artists: Artist, email: str = "member@example.com") -> Viewer:
+    return Viewer(email=email, is_admin=False, artist_ids=frozenset(artist.id for artist in artists))
