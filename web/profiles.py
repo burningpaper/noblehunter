@@ -70,7 +70,7 @@ def create(
 def _form_id(raw: str) -> int:
     """A posted id, or 0 (which matches nothing) when it isn't a whole number."""
     text = raw.strip()
-    return int(text) if text.isdigit() else 0
+    return int(text) if text.isascii() and text.isdigit() else 0
 
 
 @router.get("/{profile_id}")

@@ -83,6 +83,14 @@ class TestArtistForImport:
         with pytest.raises(LookupError, match="more than one artist"):
             artist_for_import(session, None)
 
+    def test_a_blank_name_says_what_to_do(self, session):
+        with pytest.raises(LookupError, match="--artist"):
+            artist_for_import(session, "   ")
+
+    def test_a_name_over_eighty_characters_says_what_to_do(self, session):
+        with pytest.raises(LookupError, match="--artist"):
+            artist_for_import(session, "a" * 81)
+
 
 def test_a_profile_name_shared_by_two_artists_is_ambiguous_on_the_command_line(session):
     create_profile(session, make_artist(session).id, "Main")

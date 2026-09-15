@@ -16,6 +16,7 @@
   </div>
   {% else %}
   <p class="field__hint">There are no artists yet. An admin adds them on the People page.</p>
+  {% if errors.artist_id %}<p class="field__error" role="alert">{{ errors.artist_id }}</p>{% endif %}
   {% endif %}
   <div class="field">
     <label class="field__label" for="new-profile-name">Name</label>

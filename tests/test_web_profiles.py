@@ -99,6 +99,46 @@ class TestCreateProfile:
         assert response.status_code == 422
         assert "Choose which artist this profile is for" in response.text
 
+    def test_a_non_ascii_digit_artist_id_is_refused_not_a_crash(self, client, session):
+        response = htmx_post(client, "/profiles", {"name": "Synman", "digest_target": "15", "artist_id": "²"})
+
+        assert response.status_code == 422
+        assert "Choose which artist this profile is for" in response.text
+
+    def test_with_no_artists_yet_the_form_explains_and_refuses(self, client):
+        html = page(client, "/profiles").text
+        assert "There are no artists yet" in html
+
+        response = htmx_post(client, "/profiles", {"name": "Synman", "digest_target": "15"})
+
+        assert response.status_code == 422
+        assert "Choose which artist this profile is for" in response.text
+
+    def test_with_one_artist_the_hidden_field_creates_the_profile(self, client, session):
+        artist_id = default_artist_id(session)
+
+        html = page(client, "/profiles").text
+        assert f'<input type="hidden" name="artist_id" value="{artist_id}">' in html
+
+        response = htmx_post(
+            client, "/profiles", {"name": "Synman", "digest_target": "15", "artist_id": str(artist_id)}
+        )
+
+        assert response.status_code == 200
+        profile = session.scalar(select(Profile).where(Profile.name == "Synman"))
+        assert profile.artist_id == artist_id
+
+    def test_with_two_artists_the_select_keeps_your_choice_after_an_error(self, client, session):
+        default_artist_id(session)
+        second = make_artist(session, "Second Artist")
+
+        response = htmx_post(
+            client, "/profiles", {"name": "  ", "digest_target": "15", "artist_id": str(second.id)}
+        )
+
+        assert response.status_code == 422
+        assert f'<option value="{second.id}" selected>' in response.text
+
     def test_creating_without_csrf_token_is_refused(self, client):
         response = client.post("/profiles", data={"name": "Synman", "digest_target": "20"})
 
