@@ -134,6 +134,13 @@ def _remove_term(other):
     return "delete", f"/profiles/{other.id}/terms/{term.id}", None
 
 
+def _add_suggested_genre(other):
+    # Ask Claude's "add" route: no suggester is called here, so only the snapshot check
+    # (not test_the_suggester_is_never_called_to_add_a_foreign_profiles_suggestion) can
+    # catch a bypass that still writes the ticked suggestion to another artist's profile.
+    return "post", f"/profiles/{other.id}/suggest/genres/add", {"choice": '{"value": "Sneaky"}'}
+
+
 WRITE_ROUTES = [
     _add_genre,
     _move_genre,
@@ -147,6 +154,7 @@ WRITE_ROUTES = [
     _add_term,
     _set_term_status,
     _remove_term,
+    _add_suggested_genre,
 ]
 
 
@@ -204,6 +212,10 @@ def test_the_suggester_is_never_called_to_ask_about_a_foreign_profile(session):
 
 
 def test_the_suggester_is_never_called_to_add_a_foreign_profiles_suggestion(session):
+    # Defence in depth: `add` never calls the suggester regardless of visibility, so this
+    # can't catch a bypass on its own. test_every_write_route_on_another_artists_profile_
+    # is_404_and_changes_nothing[add_suggested_genre] is what actually proves the write
+    # didn't happen.
     fake = FakeSuggester()
     client, _, other = setup(session, suggester=fake)
 
@@ -290,7 +302,8 @@ def test_removing_another_profiles_genre_through_your_own_profile_is_404_and_cha
 
 def test_moving_another_profiles_genre_through_your_own_profile_is_404_and_changes_nothing(session):
     client, own, other = setup(session)
-    other_genre = other.genres[0]
+    # The higher-priority genre, so a real move (if it happened) would swap the pair.
+    other_genre = max(other.genres, key=lambda genre: genre.priority)
     own_before, other_before = snapshot(session, own.id), snapshot(session, other.id)
 
     response = post(client, f"/profiles/{own.id}/genres/{other_genre.id}/move", {"direction": "up"})

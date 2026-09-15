@@ -41,6 +41,8 @@ def ask(
     viewer: CurrentViewer,
     prompt: FormText = "",
 ) -> Response:
+    # require_profile runs before _known_section, so an unknown section on a foreign
+    # profile still 404s without revealing that the profile exists.
     profile = require_profile(db, viewer, profile_id)
     section = _known_section(section)
     try:
