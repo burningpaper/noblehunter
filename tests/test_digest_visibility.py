@@ -5,6 +5,7 @@ same status, same body, and no visible side effect. Visibility is checked before
 own validation, so a bad verdict on someone else's outreach is still a 404, not a 422 or 500.
 """
 
+import re
 from datetime import UTC, date, datetime
 
 import pytest
@@ -25,6 +26,7 @@ from tests.factories import (
 from tests.web_helpers import app_client, csrf_token, member_client, sign_in
 
 NIGHT, EARLIER = date(2026, 9, 15), date(2026, 9, 10)
+ARTIST_LABEL = re.compile(r'<span class="digest-group__artist">([^<]*)</span>')
 
 
 def entry(session, artist, day, brief):
@@ -124,6 +126,36 @@ def test_a_single_artist_member_sees_no_artist_label(session):
     html = member_client(session, "nik@example.com").get("/digest", headers={"accept": "text/html"}).text
 
     assert "digest-group__artist" not in html
+
+
+def test_admins_see_artist_labels_rendered_on_the_page(session):
+    mine, theirs = make_artist(session, "Mine"), make_artist(session, "Theirs")
+    entry(session, mine, NIGHT, "Mine tonight")
+    entry(session, theirs, NIGHT, "Theirs tonight")
+
+    html = admin_client(session).get("/digest", headers={"accept": "text/html"}).text
+
+    assert set(ARTIST_LABEL.findall(html)) == {"Mine", "Theirs"}
+
+
+def test_a_multi_artist_member_sees_artist_labels_rendered_and_not_a_third_artists(session):
+    mine, also_mine, theirs = (
+        make_artist(session, "Mine"),
+        make_artist(session, "Also Mine"),
+        make_artist(session, "Theirs"),
+    )
+    entry(session, mine, NIGHT, "Mine tonight")
+    entry(session, also_mine, NIGHT, "Also mine tonight")
+    entry(session, theirs, NIGHT, "Theirs tonight")
+    nik = make_user(session, "nik@example.com")
+    make_member(session, mine, nik)
+    make_member(session, also_mine, nik)
+
+    html = member_client(session, "nik@example.com").get("/digest", headers={"accept": "text/html"}).text
+
+    assert set(ARTIST_LABEL.findall(html)) == {"Mine", "Also Mine"}
+    assert "Theirs" not in html
+    assert "Theirs tonight" not in html
 
 
 def test_members_dont_see_the_night_in_numbers(session):
