@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.access import MAX_POSTGRES_INT
 from core.profiles import (
     ProfileValidationError,
     activation_problems,
@@ -143,6 +144,10 @@ class TestUpdateSettings:
     def test_get_missing_profile_raises_lookup_error(self, session):
         with pytest.raises(LookupError):
             get_profile(session, 999999)
+
+    def test_get_out_of_range_profile_id_raises_lookup_error_not_data_error(self, session):
+        with pytest.raises(LookupError):
+            get_profile(session, MAX_POSTGRES_INT + 1)
 
 
 class TestListProfiles:

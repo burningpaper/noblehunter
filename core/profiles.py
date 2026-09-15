@@ -54,6 +54,8 @@ class ProfileSummary:
 
 
 def get_profile(session: Session, profile_id: int) -> Profile:
+    if not 0 < profile_id <= MAX_POSTGRES_INT:
+        raise LookupError(f"Profile {profile_id} not found")
     profile = session.get(Profile, profile_id)
     if profile is None:
         raise LookupError(f"Profile {profile_id} not found")

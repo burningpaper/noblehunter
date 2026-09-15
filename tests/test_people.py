@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.access import MAX_POSTGRES_INT
 from core.models import Artist, ArtistMember, User
 from core.people import (
     PeopleValidationError,
@@ -156,6 +157,12 @@ class TestAddMember:
     def test_an_artist_that_no_longer_exists_is_explained(self, session):
         with pytest.raises(PeopleValidationError) as error:
             add_member(session, email="nik@example.com", artist_id=999_999, added_by=ADMIN)
+
+        assert error.value.errors["artist"] == "That artist no longer exists"
+
+    def test_an_out_of_range_artist_id_is_explained_like_missing_not_a_500(self, session):
+        with pytest.raises(PeopleValidationError) as error:
+            add_member(session, email="nik@example.com", artist_id=MAX_POSTGRES_INT + 1, added_by=ADMIN)
 
         assert error.value.errors["artist"] == "That artist no longer exists"
 

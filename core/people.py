@@ -96,7 +96,8 @@ def add_member(
 
     artist = None
     if artist_id is not None:
-        artist = session.get(Artist, artist_id)
+        if 0 < artist_id <= MAX_POSTGRES_INT:
+            artist = session.get(Artist, artist_id)
         if artist is None:
             errors["artist"] = "That artist no longer exists"
     elif not " ".join(new_artist_name.split()):
