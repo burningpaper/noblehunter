@@ -4,7 +4,8 @@ from sqlalchemy import delete, select
 
 from core.models import ArtistMember, User
 from tests.factories import make_artist, make_member, make_user
-from tests.web_helpers import FakeGoogle, app_client, csrf_token, member_client
+from tests.web_helpers import FakeGoogle, app_client, csrf_token, member_client, web_settings
+from web.access import AdminViewer
 
 HTML = {"accept": "text/html"}
 
@@ -46,6 +47,46 @@ def test_someone_on_no_artist_is_refused(session):
     assert client.get("/", headers=HTML).status_code == 303
 
 
+def test_a_kelvin_sign_lookalike_is_not_treated_as_the_real_members_address(session):
+    # The Kelvin sign (U+212A, written here as the escape so the difference from a plain
+    # "K" is visible) lowercases to plain "k" -- but only if it's lowered before the ASCII
+    # check sees it, which would let it pass as kelvin@example.com.
+    make_member(session, make_artist(session), make_user(session, "kelvin@example.com"))
+    google = FakeGoogle()
+    google.userinfo["email"] = "\u212aelvin@example.com"
+    client = app_client(session, google)
+    client.get("/auth/google")
+
+    response = client.get("/auth/callback?state=fake&code=fake", headers=HTML)
+
+    assert response.status_code == 403
+    assert client.get("/", headers=HTML).status_code == 303
+
+
+def test_a_refused_sign_in_clears_any_previous_session(session):
+    client = member_client(session, "owner@example.com")
+    google = client.app.state.identity_provider
+    google.userinfo["email"] = "stranger@example.com"
+
+    response = client.get("/auth/callback?state=fake&code=fake", headers=HTML)
+
+    assert response.status_code == 403
+    assert client.get("/", headers=HTML).status_code == 303
+
+
+def test_an_unverified_members_email_is_refused(session):
+    make_member(session, make_artist(session), make_user(session, "nik@example.com"))
+    google = FakeGoogle()
+    google.userinfo["email"] = "nik@example.com"
+    google.userinfo["email_verified"] = False
+    client = app_client(session, google)
+    client.get("/auth/google")
+
+    response = client.get("/auth/callback?state=fake&code=fake", headers=HTML)
+
+    assert response.status_code == 403
+
+
 def test_taking_someone_off_their_artist_stops_them_on_the_next_click(session):
     user = make_member(session, make_artist(session), make_user(session, "nik@example.com"))
     client = member_client(session, "nik@example.com")
@@ -79,3 +120,41 @@ def test_signing_out_still_works_after_removal(session):
 
     assert response.status_code == 200
     assert response.headers["hx-redirect"] == "/login"
+
+
+def test_a_non_htmx_post_after_removal_gets_the_access_denied_page(session):
+    user = make_member(session, make_artist(session), make_user(session, "nik@example.com"))
+    client = member_client(session, "nik@example.com")
+    token = csrf_token(client)  # must be fetched before removal, or this page is refused too
+
+    session.execute(delete(ArtistMember).where(ArtistMember.user_id == user.id))
+    response = client.post("/runs/request", headers={"x-csrf-token": token})
+
+    assert response.status_code == 403
+    assert "not allowed" in response.text.lower()
+    assert client.get("/", headers=HTML).status_code == 303
+
+
+def test_an_admin_removed_from_allowed_emails_is_stopped(session):
+    client = member_client(session, "owner@example.com")
+
+    client.app.state.settings = web_settings().model_copy(
+        update={"allowed_emails": "someone-else@example.com"}
+    )
+    response = client.get("/profiles", headers=HTML)
+
+    assert response.status_code == 403
+
+
+def test_a_member_sees_the_friendly_admins_only_page(session):
+    make_member(session, make_artist(session), make_user(session, "nik@example.com"))
+    client = member_client(session, "nik@example.com")
+
+    @client.app.get("/_admin_probe", include_in_schema=False)
+    def _admin_probe(viewer: AdminViewer) -> dict:
+        return {"ok": True}
+
+    response = client.get("/_admin_probe", headers=HTML)
+
+    assert response.status_code == 403
+    assert "only admins" in response.text.lower()

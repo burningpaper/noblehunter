@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Admins only · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="message rise" aria-labelledby="message-title">
+  <p class="eyebrow">403</p>
+  <h1 id="message-title" class="message__title">Only admins can do that</h1>
+  <p class="message__body">An admin manages people and nightly runs. Ask one if you need this changed.</p>
+  <a class="button button--primary" href="/profiles">Back to profiles</a>
+</section>
+{% endblock %}

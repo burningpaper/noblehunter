@@ -18,7 +18,7 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from core.access import record_sign_in, viewer_for
+from core.access import Viewer, record_sign_in, viewer_for
 from web.db import get_db
 from web.sessions import SESSION_CSRF, SESSION_NEXT, SESSION_USER, current_user, safe_next
 from web.settings import WebSettings
@@ -81,35 +81,43 @@ async def auth_callback(request: Request, db: DbSession) -> Response:
         return templates.TemplateResponse(request, "errors/sign_in_failed.html", status_code=400)
 
     userinfo = token.get("userinfo") or {}
-    email = str(userinfo.get("email") or "").strip().lower()
+    raw_email = str(userinfo.get("email") or "")
     verified = userinfo.get("email_verified") is True
     admins = request.app.state.settings.allowed_email_set
-    admitted = verified and await run_in_threadpool(_admit, db, admins, email, userinfo)
-    if not admitted:
-        logger.warning("Refused sign-in for %s (email verified: %s)", email or "<no email>", verified)
+    # Passed raw, uncleaned: viewer_for's own ASCII check must see the address exactly as
+    # Google sent it, or a look-alike character lowered here first could pass as a real one.
+    viewer = await run_in_threadpool(_admit, db, admins, raw_email, userinfo) if verified else None
+    if viewer is None:
+        request.session.clear()  # a refused attempt must not leave an earlier session behind
+        logger.warning("Refused sign-in for %s (email verified: %s)", raw_email or "<no email>", verified)
         return templates.TemplateResponse(request, "errors/access_denied.html", status_code=403)
 
     next_url = safe_next(request.session.get(SESSION_NEXT))
     request.session.clear()  # drop pre-login state so a planted session can't be carried in
     request.session[SESSION_USER] = {
-        "email": email,
-        "name": userinfo.get("name") or email,
+        "email": viewer.email,
+        "name": userinfo.get("name") or viewer.email,
         "picture": userinfo.get("picture"),
     }
     request.session[SESSION_CSRF] = secrets.token_urlsafe(32)
-    logger.info("Signed in %s", email)
+    logger.info("Signed in %s", viewer.email)
     return RedirectResponse(next_url, status_code=303)
 
 
-def _admit(db: Session, admins: frozenset[str], email: str, userinfo: dict) -> bool:
-    """True if this email may come in (admin or member); records the sign-in when it may."""
-    if viewer_for(db, email, admins) is None:
-        return False
+def _admit(db: Session, admins: frozenset[str], email: str, userinfo: dict) -> Viewer | None:
+    """The viewer for this email (admin or member), if any; records the sign-in when there is one."""
+    viewer = viewer_for(db, email, admins)
+    if viewer is None:
+        return None
     record_sign_in(
-        db, email=email, name=userinfo.get("name"), picture_url=userinfo.get("picture"), now=datetime.now(UTC)
+        db,
+        email=viewer.email,
+        name=userinfo.get("name"),
+        picture_url=userinfo.get("picture"),
+        now=datetime.now(UTC),
     )
     db.commit()
-    return True
+    return viewer
 
 
 @router.post("/logout", include_in_schema=False)

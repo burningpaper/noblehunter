@@ -8,6 +8,10 @@ viewer refuses someone who has been taken off all their artists. The answers:
   (htmx requests are sent back to /login);
 - something on another artist, or missing: 404 with the normal not-found page;
 - an admin-only action by a member: 403.
+
+For a signed-in user, a 405 (wrong method) or a trailing-slash 307 happens before any
+dependency runs, so it bypasses these checks. That only reveals which routes exist, and
+nothing on those routes, so it's left alone here.
 """
 
 from typing import Annotated
@@ -45,6 +49,10 @@ def require_admin_viewer(viewer: CurrentViewer) -> Viewer:
 AdminViewer = Annotated[Viewer, Depends(require_admin_viewer)]
 
 
+def wants_html(request: Request) -> bool:
+    return "text/html" in request.headers.get("accept", "")
+
+
 def install_access_handlers(app: FastAPI) -> None:
     @app.exception_handler(NoAccess)
     async def no_access(request: Request, error: NoAccess) -> Response:
@@ -55,10 +63,12 @@ def install_access_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(NotVisible)
     async def not_visible(request: Request, error: NotVisible) -> Response:
-        if "text/html" in request.headers.get("accept", ""):
+        if wants_html(request):
             return templates.TemplateResponse(request, "errors/not_found.html", status_code=404)
         return JSONResponse({"detail": "Not Found"}, status_code=404)
 
     @app.exception_handler(AdminOnly)
     async def admin_only(request: Request, error: AdminOnly) -> Response:
+        if wants_html(request):
+            return templates.TemplateResponse(request, "errors/admins_only.html", status_code=403)
         return JSONResponse({"detail": str(error)}, status_code=403)

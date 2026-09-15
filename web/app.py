@@ -18,7 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from core.settings import MissingSettingError
 from core.suggestions import ClaudeSuggester, Suggester
-from web.access import CurrentViewer, current_viewer, install_access_handlers
+from web.access import CurrentViewer, current_viewer, install_access_handlers, wants_html
 from web.auth import IdentityProvider, google_provider
 from web.auth import router as auth_router
 from web.budget import router as budget_router
@@ -140,14 +140,14 @@ def _base_app() -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, error: StarletteHTTPException) -> Response:
-        if error.status_code == 404 and _wants_html(request):
+        if error.status_code == 404 and wants_html(request):
             return templates.TemplateResponse(request, "errors/not_found.html", status_code=404)
         return JSONResponse({"detail": error.detail}, status_code=error.status_code, headers=error.headers)
 
     @app.exception_handler(Exception)
     async def server_error(request: Request, error: Exception) -> Response:
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-        if _wants_html(request):
+        if wants_html(request):
             return templates.TemplateResponse(request, "errors/server_error.html", status_code=500)
         return JSONResponse({"detail": "Something went wrong."}, status_code=500)
 
@@ -162,10 +162,6 @@ def _add_security_headers(app: FastAPI, hsts: bool) -> None:
         if hsts:
             response.headers["Strict-Transport-Security"] = HSTS
         return response
-
-
-def _wants_html(request: Request) -> bool:
-    return "text/html" in request.headers.get("accept", "")
 
 
 app = app_from_environment()
