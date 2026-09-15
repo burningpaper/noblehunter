@@ -119,8 +119,10 @@ def registered_routes(app: FastAPI) -> set[tuple[str, str]]:
         if isinstance(route, Mount) and context.path == STATIC_MOUNT and isinstance(route.app, StaticFiles):
             continue  # files only, nothing per artist
         if not isinstance(route, APIRoute):
+            # A mount inside an included router can report an empty path; fall back to its own.
+            where = context.path or getattr(route, "path", "") or getattr(route, "name", "") or repr(route)
             raise AssertionError(
-                f"The route walk can't see inside {type(route).__name__} {context.path!r}. "
+                f"The route walk can't see inside {type(route).__name__} {where!r}. "
                 "Give its routes to the app as APIRoutes, or extend tests/route_walk.py to walk them."
             )
         found.update((method, context.path) for method in context.methods)

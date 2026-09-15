@@ -53,7 +53,9 @@ def test_every_route_is_covered(outsider):
     assert EXEMPT <= registered  # an exempt route that no longer exists should leave the list too
 
 
-def test_a_mounted_sub_app_fails_the_coverage_check_instead_of_being_skipped():
+# "/static" too: skipping the static mount must also require it to be StaticFiles.
+@pytest.mark.parametrize("mount_path", ["/admin", "/static"])
+def test_a_mounted_sub_app_fails_the_coverage_check_instead_of_being_skipped(mount_path):
     no_docs = {"docs_url": None, "redoc_url": None, "openapi_url": None}  # only the mount to find
     app = FastAPI(**no_docs)
     sub_app = FastAPI(**no_docs)
@@ -62,9 +64,9 @@ def test_a_mounted_sub_app_fails_the_coverage_check_instead_of_being_skipped():
     def secrets() -> dict:
         return {}
 
-    app.mount("/admin", sub_app)
+    app.mount(mount_path, sub_app)
 
-    with pytest.raises(AssertionError, match="'/admin'"):
+    with pytest.raises(AssertionError, match=f"'{mount_path}'"):
         registered_routes(app)
 
 

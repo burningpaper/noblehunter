@@ -93,8 +93,11 @@ class TestIdsTooBigToExist:
         token = csrf_token(client)
 
         if position == FORM_ARTIST_ID:
+            # A form's artist choice is a field to correct (422); a URL id names something missing (404).
             response = call(client, method, path, world.ids, token=token, form_artist_id=OUT_OF_RANGE)
+            expected = 422
         else:
             response = call(client, method, path, {**world.ids, position: OUT_OF_RANGE}, token=token)
+            expected = 404
 
-        assert response.status_code in NOT_FOUND_OR_INVALID, response.text[:300]
+        assert response.status_code == expected, response.text[:300]
