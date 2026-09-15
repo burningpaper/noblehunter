@@ -48,7 +48,8 @@ markers = ["live: hits real external services; run with --run-live"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["spike"]
+# docs: specs and plans hold Python snippets that ruff would otherwise reformat inside the markdown.
+extend-exclude = ["spike", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
