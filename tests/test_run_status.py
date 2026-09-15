@@ -4,7 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 from core.models import Run, RunRequestStatus, RunStatus, RunTrigger, WorkerState, WorkerStatus
 from core.profiles import create_profile
-from core.run_status import NO_RUN_WARNING_AFTER, RUNNER_OFFLINE_AFTER, request_run, run_status
+from core.run_status import (
+    MEMBER_WARNING,
+    NO_RUN_WARNING_AFTER,
+    RUNNER_OFFLINE_AFTER,
+    member_warnings,
+    request_run,
+    run_status,
+)
 from tests.factories import default_artist_id
 
 NOW = datetime(2026, 9, 15, 9, 0, tzinfo=UTC)
@@ -152,3 +159,16 @@ class TestRunStatus:
         session.flush()
 
         assert not any("failed" in warning for warning in run_status(session, NOW).warnings)
+
+
+class TestMemberWarnings:
+    def test_no_warnings_means_nothing_to_show(self):
+        assert member_warnings(()) == ()
+
+    def test_any_warnings_become_one_generic_line(self):
+        assert member_warnings(("The last run failed: raw exception with a curator's email",)) == (
+            MEMBER_WARNING,
+        )
+
+    def test_several_warnings_still_become_one_generic_line(self):
+        assert member_warnings(("a", "b")) == (MEMBER_WARNING,)

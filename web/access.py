@@ -35,6 +35,9 @@ def current_viewer(request: Request, db: Annotated[Session, Depends(get_db)]) ->
     viewer = viewer_for(db, str(user.get("email") or ""), request.app.state.settings.allowed_email_set)
     if viewer is None:
         raise NoAccess()
+    # Templates read this back (see web/templating.auth_context) so "is_admin" for display
+    # always agrees with the access decision made here, instead of re-deriving it separately.
+    request.state.viewer = viewer
     return viewer
 
 

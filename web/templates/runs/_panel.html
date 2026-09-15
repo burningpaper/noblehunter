@@ -12,7 +12,7 @@
     {% endif %}
   </div>
 
-  {% for warning in status.warnings %}
+  {% for warning in run_warnings %}
   <p class="notice notice--warning">{{ warning }}</p>
   {% endfor %}
 
@@ -60,7 +60,7 @@
     </button>
     <p class="run-status__note">Searches for every active profile.</p>
     {% else %}
-    <p class="run-status__note">The runner searches for every active profile each night.</p>
+    <p class="run-status__note">Runs happen every night. An admin can start one sooner.</p>
     {% endif %}
   </div>
 </section>

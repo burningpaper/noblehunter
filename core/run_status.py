@@ -79,6 +79,20 @@ def run_status(session: Session, now: datetime) -> RunStatusView:
     )
 
 
+MEMBER_WARNING = "Something is wrong with the nightly runs. An admin can see the details."
+
+
+def member_warnings(warnings: tuple[str, ...]) -> tuple[str, ...]:
+    """What a member may see of the admin's warnings.
+
+    The real warnings are written for the admin and can name another artist's profile, a
+    curator's email, or a search URL -- `last.error` is raw exception text, not something
+    sanitised for sharing. A member gets a single generic line instead, or nothing at all
+    when there's nothing wrong.
+    """
+    return (MEMBER_WARNING,) if warnings else ()
+
+
 def relative_time(moment: datetime | None, now: datetime) -> str:
     """ "12 minutes ago", "in 5 hours": readable anywhere, whatever time zone the server is in."""
     if moment is None:

@@ -43,7 +43,7 @@ def profiles_page(request: Request, db: DbSession, viewer: CurrentViewer) -> Res
         "errors": {},
         "artist_choices": artist_choices(db),
         **panel_context(db, viewer),
-        **budget_context(db),
+        **(budget_context(db) if viewer.is_admin else {}),
     }
     return templates.TemplateResponse(request, "profiles/list.html", context)
 

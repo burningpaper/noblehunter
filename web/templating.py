@@ -16,13 +16,14 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 def auth_context(request: Request) -> dict:
     has_session = "session" in request.scope
     user = current_user(request)
-    settings = getattr(request.app.state, "settings", None)
-    admins = settings.allowed_email_set if settings is not None else frozenset()
+    # Set by web.access.current_viewer once access is decided; unset on pages rendered before
+    # that (login, and errors for someone with no access at all).
+    viewer = getattr(request.state, "viewer", None)
     return {
         "current_user": user,
         "csrf_token": request.session.get(SESSION_CSRF) if has_session else None,
         # Only decides what to *show*: every admin action is also enforced server-side by AdminViewer.
-        "is_admin": bool(user) and str(user.get("email", "")).strip().lower() in admins,
+        "is_admin": viewer.is_admin if viewer is not None else False,
     }
 
 

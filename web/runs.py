@@ -14,7 +14,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from core.access import Viewer
-from core.run_status import request_run, run_status
+from core.run_status import member_warnings, request_run, run_status
 from web.access import AdminViewer, CurrentViewer
 from web.db import get_db
 from web.templating import templates
@@ -37,7 +37,14 @@ def run_now(request: Request, db: DbSession, viewer: AdminViewer) -> Response:
 
 def panel_context(db: Session, viewer: Viewer) -> dict:
     now = datetime.now(UTC)
-    return {"run_status_view": run_status(db, now), "now": now, "can_run_now": viewer.is_admin}
+    status = run_status(db, now)
+    warnings = status.warnings if viewer.is_admin else member_warnings(status.warnings)
+    return {
+        "run_status_view": status,
+        "now": now,
+        "can_run_now": viewer.is_admin,
+        "run_warnings": warnings,
+    }
 
 
 def _render_panel(request: Request, db: Session, viewer: Viewer) -> Response:

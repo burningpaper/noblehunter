@@ -46,13 +46,10 @@ def add(
     new_artist_name: FormText = "",
 ) -> Response:
     form = {"email": email, "artist_id": artist_id, "new_artist_name": new_artist_name}
+    chosen = _chosen_artist(artist_id)
     try:
         user = add_member(
-            db,
-            email=email,
-            artist_id=_chosen_artist(artist_id),
-            new_artist_name=new_artist_name,
-            added_by=viewer.email,
+            db, email=email, artist_id=chosen, new_artist_name=new_artist_name, added_by=viewer.email
         )
         db.commit()
     except PeopleValidationError as error:
@@ -61,10 +58,10 @@ def add(
             db,
             form=form,
             errors=error.errors,
-            existing_artist_chosen=_chosen_artist(artist_id) is not None,
+            existing_artist_chosen=chosen is not None,
             status_code=422,
         )
-    artist = _artist_named_for(db, artist_id, new_artist_name)
+    artist = _artist_named_for(db, chosen, new_artist_name)
     return _content(
         request, db, notice=f"Added {user.email} to {artist}. They can sign in with that Google account."
     )
@@ -109,8 +106,7 @@ def _chosen_artist(raw: str) -> int | None:
     return None if text in ("", NEW_ARTIST) else form_id(text)
 
 
-def _artist_named_for(db: Session, raw_artist_id: str, new_artist_name: str) -> str:
-    chosen = _chosen_artist(raw_artist_id)
+def _artist_named_for(db: Session, chosen: int | None, new_artist_name: str) -> str:
     artist = db.get(Artist, chosen) if chosen else None
     return artist.name if artist is not None else " ".join(new_artist_name.split())
 
