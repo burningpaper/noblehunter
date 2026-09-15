@@ -9,9 +9,9 @@ Validation reports every problem at once, in words Jarred can act on.
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
-from core.access import Viewer, visible_to
+from core.access import MAX_POSTGRES_INT, Viewer, visible_to
 from core.models import Artist, Profile, SearchTermStatus
 from core.profile_rules import (
     DEFAULT_DIGEST_TARGET,
@@ -63,7 +63,7 @@ def get_profile(session: Session, profile_id: int) -> Profile:
 def create_profile(
     session: Session, artist_id: int, name: str, digest_target: int | str = DEFAULT_DIGEST_TARGET
 ) -> Profile:
-    if session.get(Artist, artist_id) is None:
+    if not 0 < artist_id <= MAX_POSTGRES_INT or session.get(Artist, artist_id) is None:
         raise ProfileValidationError({"artist_id": "Choose which artist this profile is for"})
     clean_name, target, _ = _validated_settings(session, artist_id, name, digest_target, profile_id=None)
     profile = Profile(artist_id=artist_id, name=clean_name, digest_target=target)
@@ -122,7 +122,7 @@ def list_profiles(session: Session, viewer: Viewer) -> list[ProfileSummary]:
         .join(Artist, Artist.id == Profile.artist_id)
         .where(visible_to(viewer, Profile.artist_id))
         .options(
-            selectinload(Profile.artist),
+            contains_eager(Profile.artist),
             selectinload(Profile.genres),
             selectinload(Profile.reference_artists),
             selectinload(Profile.tracks),

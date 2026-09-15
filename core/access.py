@@ -5,13 +5,13 @@ admins, everyone in ALLOWED_EMAILS, see everything. Anything a viewer can't see 
 reported exactly like something that doesn't exist, so nobody can learn what another artist
 has.
 
-Stage 1 (this module, today) only gets partway there. Every page and action except sign-in
-requires a Viewer, and admin-only actions (the People page, Run now, the Claude budget) check
-require_admin. But visible_to, require_profile and require_outreach aren't wired into any
-route yet, so profiles, the digest and verdicts are still unfiltered: a signed-in member can
-see and edit every artist's work, not just their own. Until stage 2 wires filtering into
-every route and tests/test_web_access.py walks all of them to check none forgot, only admins
-should be given access.
+Stage 1 (this module) only got partway there. Every page and action except sign-in requires a
+Viewer, and admin-only actions (the People page, Run now, the Claude budget) check
+require_admin. Stage 2 wires visible_to, require_profile and require_outreach into the routes
+one area at a time: the profiles list, profile creation and profile pages (web/profiles.py)
+now scope to the viewer's own artists, with everything else still to come in Tasks 10-12. Until
+that's done everywhere and tests/test_web_access.py walks all of them to check none forgot, a
+signed-in member can still see and edit some other artist's work through an unfiltered route.
 
 Access is worked out afresh on every request (see web/access.py), so taking someone off an
 artist stops them on their next click, not when their session cookie expires.

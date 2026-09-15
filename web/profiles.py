@@ -144,10 +144,13 @@ def _change_status(request: Request, db: Session, viewer: Viewer, profile_id: in
 
 
 def _grouped(summaries: list[ProfileSummary]) -> list[tuple[str, list[ProfileSummary]]]:
-    """Profiles in (artist name, profiles) groups, keeping the list's order."""
-    return [
-        (artist_name, list(group)) for artist_name, group in groupby(summaries, key=lambda s: s.artist_name)
-    ]
+    """Profiles in (artist name, profiles) groups, keeping the list's order.
+
+    Grouped by (artist_id, artist_name) so two artists that happen to share a name don't merge
+    into one group; the name alone is what the template needs back.
+    """
+    groups = groupby(summaries, key=lambda s: (s.artist_id, s.artist_name))
+    return [(artist_name, list(group)) for (_artist_id, artist_name), group in groups]
 
 
 def _shows_artists(viewer: Viewer) -> bool:

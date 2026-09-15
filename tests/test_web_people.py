@@ -125,6 +125,12 @@ class TestAddPerson:
         assert response.status_code == 422
         assert "That artist no longer exists" in response.text
 
+    def test_an_out_of_range_artist_id_is_a_clean_422_not_a_crash(self, admin):
+        response = post(admin, "/people/members", {"email": "nik@example.com", "artist_id": "99999999999"})
+
+        assert response.status_code == 422
+        assert "That artist no longer exists" in response.text
+
     def test_the_email_field_has_a_hint(self, admin):
         html = admin.get("/people", headers=HTML).text
 
@@ -187,6 +193,11 @@ class TestArtistActions:
     def test_renaming_a_missing_artist_is_404(self, admin):
         assert post(admin, "/people/artists/999999/rename", {"name": "X"}).status_code == 404
 
+    def test_renaming_an_out_of_range_artist_id_is_404_not_a_crash(self, admin):
+        response = post(admin, "/people/artists/99999999999/rename", {"name": "X"})
+
+        assert response.status_code == 404
+
     def test_removing_a_member(self, admin, session):
         artist = make_artist(session, "Synman")
         user = make_member(session, artist, make_user(session, "nik@example.com"))
@@ -211,6 +222,20 @@ class TestArtistActions:
         artist = make_artist(session)
 
         assert post(admin, f"/people/artists/{artist.id}/members/999999/remove").status_code == 404
+
+    def test_removing_with_an_out_of_range_artist_id_is_404_not_a_crash(self, admin, session):
+        user = make_user(session)
+
+        response = post(admin, f"/people/artists/99999999999/members/{user.id}/remove")
+
+        assert response.status_code == 404
+
+    def test_removing_with_an_out_of_range_user_id_is_404_not_a_crash(self, admin, session):
+        artist = make_artist(session)
+
+        response = post(admin, f"/people/artists/{artist.id}/members/99999999999/remove")
+
+        assert response.status_code == 404
 
 
 class TestFocusAndAnnouncements:

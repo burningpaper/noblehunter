@@ -37,6 +37,14 @@ def test_an_unknown_artist_is_refused(session):
     assert error.value.errors["artist_id"] == "Choose which artist this profile is for"
 
 
+def test_an_out_of_range_artist_id_is_refused_not_a_crash(session):
+    """Bigger than Postgres's `integer` range: session.get would otherwise raise a DataError."""
+    with pytest.raises(ProfileValidationError) as error:
+        create_profile(session, 99_999_999_999, "Synman")
+
+    assert error.value.errors["artist_id"] == "Choose which artist this profile is for"
+
+
 def test_renaming_only_checks_names_within_the_artist(session):
     first, second = make_artist(session), make_artist(session)
     create_profile(session, first.id, "Taken")

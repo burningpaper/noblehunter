@@ -90,6 +90,10 @@ class TestArtists:
         with pytest.raises(LookupError):
             rename_artist(session, 999_999, "Anything")
 
+    def test_renaming_an_out_of_range_artist_id_raises_lookup_error(self, session):
+        with pytest.raises(LookupError):
+            rename_artist(session, 99_999_999_999, "Anything")
+
     def test_list_shows_members_and_profile_counts_sorted(self, session):
         artist = make_artist(session, "b artist")
         make_artist(session, "A artist")
@@ -213,3 +217,7 @@ class TestRemoveMember:
     def test_removing_someone_who_is_not_a_member_raises_lookup_error(self, session):
         with pytest.raises(LookupError):
             remove_member(session, make_artist(session).id, make_user(session).id)
+
+    def test_removing_with_an_out_of_range_id_raises_lookup_error(self, session):
+        with pytest.raises(LookupError):
+            remove_member(session, 99_999_999_999, make_user(session).id)
