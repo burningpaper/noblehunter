@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from core.models import PlaylistProfileFit
 from core.profiles import create_profile, set_profile_active
 from pipeline.report import format_report, qualified_playlists
-from tests.factories import make_curator, make_outreach, make_playlist
+from tests.factories import default_artist_id, make_curator, make_outreach, make_playlist
 from tests.profile_helpers import add_contents
 
 TODAY = date(2026, 9, 14)
@@ -16,7 +16,7 @@ def at(days_ago: int) -> datetime:
 
 
 def active_profile(session, name="Synman"):
-    profile = add_contents(session, create_profile(session, name))
+    profile = add_contents(session, create_profile(session, default_artist_id(session), name))
     set_profile_active(session, profile.id, True)
     return profile
 

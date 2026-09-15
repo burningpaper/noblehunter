@@ -21,6 +21,7 @@ from pipeline.qualify import (
     assess_fit,
     judge,
 )
+from tests.factories import default_artist_id
 from tests.test_qualify import SYNMAN, TODAY, playlist, track
 
 RULES = replace(SYNMAN, genres=("IDM", "glitch", "ambient techno"))
@@ -88,7 +89,7 @@ def test_a_profile_without_genres_still_needs_its_artists():
 
 
 def test_rules_carry_the_profiles_genres_in_priority_order(session):
-    profile = create_profile(session, "Synman")
+    profile = create_profile(session, default_artist_id(session), "Synman")
     add_genre(session, profile.id, "IDM")
     add_genre(session, profile.id, "glitch")
 

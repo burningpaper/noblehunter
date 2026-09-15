@@ -1,4 +1,22 @@
 <form class="form" hx-post="/profiles" hx-target="this" hx-swap="outerHTML" novalidate>
+  {% if artist_choices | length == 1 %}
+  <input type="hidden" name="artist_id" value="{{ artist_choices[0][0] }}">
+  {% if errors.artist_id %}<p class="field__error" role="alert">{{ errors.artist_id }}</p>{% endif %}
+  {% elif artist_choices %}
+  <div class="field">
+    <label class="field__label" for="new-profile-artist">Artist</label>
+    <select class="input" id="new-profile-artist" name="artist_id" required
+            {% if errors.artist_id %}aria-invalid="true" aria-describedby="new-profile-artist-error"{% endif %}>
+      <option value="">Choose an artist</option>
+      {% for choice_id, choice_name in artist_choices %}
+      <option value="{{ choice_id }}"{% if form.artist_id | string == choice_id | string %} selected{% endif %}>{{ choice_name }}</option>
+      {% endfor %}
+    </select>
+    {% if errors.artist_id %}<p class="field__error" id="new-profile-artist-error">{{ errors.artist_id }}</p>{% endif %}
+  </div>
+  {% else %}
+  <p class="field__hint">There are no artists yet. An admin adds them on the People page.</p>
+  {% endif %}
   <div class="field">
     <label class="field__label" for="new-profile-name">Name</label>
     <input class="input" id="new-profile-name" name="name" value="{{ form.name }}" maxlength="80"

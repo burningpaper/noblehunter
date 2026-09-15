@@ -16,6 +16,7 @@ from core.profile_rules import DEFAULT_DIGEST_TARGET
 from core.profiles import (
     ProfileValidationError,
     activation_problems,
+    artist_choices,
     create_profile,
     get_profile,
     list_profiles,
@@ -36,8 +37,9 @@ FormText = Annotated[str, Form()]
 def profiles_page(request: Request, db: DbSession) -> Response:
     context = {
         "profiles": list_profiles(db),
-        "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET},
+        "form": {"name": "", "digest_target": DEFAULT_DIGEST_TARGET, "artist_id": ""},
         "errors": {},
+        "artist_choices": artist_choices(db),
         **panel_context(db),
         **budget_context(db),
     }
@@ -45,14 +47,30 @@ def profiles_page(request: Request, db: DbSession) -> Response:
 
 
 @router.post("")
-def create(request: Request, db: DbSession, name: FormText = "", digest_target: FormText = "") -> Response:
+def create(
+    request: Request,
+    db: DbSession,
+    name: FormText = "",
+    digest_target: FormText = "",
+    artist_id: FormText = "",
+) -> Response:
     try:
-        profile = create_profile(db, name, digest_target)
+        profile = create_profile(db, _form_id(artist_id), name, digest_target)
         db.commit()
     except ProfileValidationError as error:
-        context = {"form": {"name": name, "digest_target": digest_target}, "errors": error.errors}
+        context = {
+            "form": {"name": name, "digest_target": digest_target, "artist_id": artist_id},
+            "errors": error.errors,
+            "artist_choices": artist_choices(db),
+        }
         return templates.TemplateResponse(request, "profiles/_create_form.html", context, status_code=422)
     return _redirect(request, f"/profiles/{profile.id}")
+
+
+def _form_id(raw: str) -> int:
+    """A posted id, or 0 (which matches nothing) when it isn't a whole number."""
+    text = raw.strip()
+    return int(text) if text.isdigit() else 0
 
 
 @router.get("/{profile_id}")

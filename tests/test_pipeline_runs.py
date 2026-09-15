@@ -7,6 +7,7 @@ from sqlalchemy import select
 from core.models import RunStageCount
 from core.profiles import create_profile
 from pipeline.runs import finish_run, record_stage, start_run
+from tests.factories import default_artist_id
 
 NOW = datetime(2026, 9, 14, 2, 30, tzinfo=UTC)
 
@@ -37,7 +38,7 @@ def test_finishing_a_failed_run_keeps_the_reason(session):
 
 def test_stage_counts_are_recorded_per_profile(session):
     run = start_run(session, trigger="manual")
-    profile = create_profile(session, "Synman")
+    profile = create_profile(session, default_artist_id(session), "Synman")
 
     record_stage(session, run, "discover", count_in=59, count_out=41, profile_id=profile.id)
 

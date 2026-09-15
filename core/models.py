@@ -8,6 +8,7 @@ express cleanly:
 - outreach: an EXCLUDE constraint so the same curator can't be digested twice within
   90 days, across all profiles.
 - run_requests: a partial unique index so only one "Run now" can be open per scope.
+- profiles: unique by name within an artist (migration 0006).
 """
 
 from datetime import date, datetime
@@ -166,18 +167,70 @@ def created_at_column() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# --- People and artists ---------------------------------------------------------------
+
+
+class User(Base):
+    """Someone who has signed in. Admins come from ALLOWED_EMAILS; everyone else needs a membership."""
+
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("email = lower(email)", name="email_lowercase"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    name: Mapped[str | None] = mapped_column(String(200))
+    picture_url: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    last_signed_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    memberships: Mapped[list["ArtistMember"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Artist(Base):
+    """A musician or act. Their profiles, digests and (later) mail belong together."""
+
+    __tablename__ = "artists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    created_at: Mapped[datetime] = created_at_column()
+
+    members: Mapped[list["ArtistMember"]] = relationship(
+        back_populates="artist", cascade="all, delete-orphan"
+    )
+    profiles: Mapped[list["Profile"]] = relationship(back_populates="artist")
+
+
+class ArtistMember(Base):
+    __tablename__ = "artist_members"
+
+    artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    added_at: Mapped[datetime] = created_at_column()
+    added_by: Mapped[str | None] = mapped_column(String(320))
+
+    artist: Mapped[Artist] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(back_populates="memberships")
+
+
 # --- Profiles -----------------------------------------------------------------------
 
 
 class Profile(Base):
     __tablename__ = "profiles"
     __table_args__ = (
+        UniqueConstraint("artist_id", "name"),
         CheckConstraint("digest_target between 1 and 50", name="digest_target"),
         CheckConstraint("min_followers >= 0", name="min_followers"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(80), unique=True)
+    artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id", ondelete="RESTRICT"))
+    name: Mapped[str] = mapped_column(String(80))  # unique within its artist
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     digest_target: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     # Playlists with fewer followers aren't worth pitching (migration 0003); 0 means no floor.
@@ -187,6 +240,7 @@ class Profile(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    artist: Mapped["Artist"] = relationship(back_populates="profiles")
     genres: Mapped[list["ProfileGenre"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )

@@ -10,7 +10,7 @@ from core.profiles import create_profile, set_profile_active
 from pipeline.evaluate import evaluate_candidates
 from pipeline.runs import start_run
 from pipeline.spotify import PlaylistData, SpotifyFetchError, Track
-from tests.factories import make_playlist
+from tests.factories import default_artist_id, make_playlist
 from tests.profile_helpers import add_contents
 
 TODAY = date(2026, 9, 14)
@@ -64,7 +64,7 @@ class FakeFetcher:
 @pytest.fixture
 def profile(session):
     """An active profile whose reference artists are 'Artist 0', 'Artist 1' and 'Artist 2'."""
-    profile = add_contents(session, create_profile(session, "Synman"))
+    profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
     set_profile_active(session, profile.id, True)
     return profile
 
@@ -139,7 +139,7 @@ class TestVerdicts:
         assert (stored.status, stored.rejection_reason) == ("rejected", reason)
 
     def test_paused_profiles_are_not_judged_against(self, session, profile, run):
-        paused = add_contents(session, create_profile(session, "Paused One"))
+        paused = add_contents(session, create_profile(session, default_artist_id(session), "Paused One"))
         make_playlist(session, spotify_id=pid(1), status="candidate")
 
         evaluate(session, FakeFetcher({pid(1): data(pid(1))}), run)

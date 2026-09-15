@@ -19,6 +19,7 @@ from pipeline.nightly import StageReport
 from pipeline.search import QUERY_PREFIX, ProviderResult, SearchHit
 from pipeline.spotify import PlaylistData, Track
 from tests.conftest import TEST_DATABASE_URL
+from tests.factories import default_artist_id
 from tests.profile_helpers import add_contents
 
 PLAYLIST_ID = "1" * 22
@@ -27,7 +28,9 @@ REAL_BUILD_CLAUDE_STAGES = getattr(cli, "build_claude_stages", None)
 
 def wipe(engine) -> None:
     with engine.begin() as connection:
-        connection.execute(text("truncate profiles, playlists, curators, runs restart identity cascade"))
+        connection.execute(
+            text("truncate profiles, playlists, curators, runs, artists, users restart identity cascade")
+        )
 
 
 class FakeProvider:
@@ -81,7 +84,7 @@ def pipeline_env(engine, monkeypatch):
     monkeypatch.setattr(cli, "open_spotify_client", fake_spotify)
     wipe(engine)
     with Session(engine) as session:
-        profile = add_contents(session, create_profile(session, "Synman"))
+        profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
         set_profile_active(session, profile.id, True)
         session.commit()
     yield engine

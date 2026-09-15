@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from core.profile_contents import add_genre, add_reference_artist, add_search_term
 from core.profiles import create_profile, set_profile_active
+from tests.factories import default_artist_id
 from tests.profile_helpers import add_contents
 from tests.web_helpers import FakeGoogle, csrf_token, sign_in, web_settings
 from web.app import create_app
@@ -28,7 +29,7 @@ def client(session):
 
 @pytest.fixture
 def profile(session):
-    return create_profile(session, "Synman")
+    return create_profile(session, default_artist_id(session), "Synman")
 
 
 def htmx(client: TestClient, method: str, path: str, data: dict | None = None):
@@ -151,7 +152,7 @@ class TestChangingAndRemoving:
         assert "Resume" in response.text
 
     def test_removal_that_breaks_readiness_says_the_profile_was_paused(self, client, session):
-        profile = add_contents(session, create_profile(session, "Live One"))
+        profile = add_contents(session, create_profile(session, default_artist_id(session), "Live One"))
         set_profile_active(session, profile.id, True)
         artist = profile.reference_artists[0]
 
@@ -164,7 +165,7 @@ class TestChangingAndRemoving:
         assert profile.is_active is False
 
     def test_another_profiles_item_is_not_found(self, client, session, profile):
-        other = create_profile(session, "Side Project")
+        other = create_profile(session, default_artist_id(session), "Side Project")
         genre = add_genre(session, other.id, "IDM")
 
         response = htmx(client, "delete", f"/profiles/{profile.id}/genres/{genre.id}")

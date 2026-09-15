@@ -11,7 +11,7 @@ from core.profiles import create_profile
 from pipeline.discover import discover_for_profile, placeholder_name
 from pipeline.runs import start_run
 from pipeline.search import QUERY_PREFIX, ProviderResult, SearchHit
-from tests.factories import make_playlist
+from tests.factories import default_artist_id, make_playlist
 
 TODAY = date(2026, 9, 14)
 
@@ -42,7 +42,7 @@ class FakeProvider:
 
 @pytest.fixture
 def profile(session):
-    profile = create_profile(session, "Synman")
+    profile = create_profile(session, default_artist_id(session), "Synman")
     add_search_term(session, profile.id, "glitchy ambient")
     return profile
 

@@ -16,7 +16,7 @@ from core.models import Profile, RejectionReason
 from core.profiles import ProfileValidationError, create_profile, update_profile_settings
 from pipeline.qualify import ProfileRules, assess_fit, judge
 from pipeline.spotify import PlaylistData, Track
-from tests.factories import make_playlist
+from tests.factories import default_artist_id, make_playlist
 from tests.web_helpers import FakeGoogle, csrf_token, sign_in, web_settings
 from web.app import create_app
 from web.db import get_db
@@ -107,17 +107,17 @@ class TestJudge:
 
 class TestProfileSetting:
     def test_new_profiles_start_with_a_floor_of_50(self, session):
-        assert create_profile(session, "Synman").min_followers == 50
+        assert create_profile(session, default_artist_id(session), "Synman").min_followers == 50
 
     def test_rules_are_built_from_the_profile_setting(self, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
         update_profile_settings(session, profile.id, "Synman", "20", min_followers="120")
 
         assert ProfileRules.from_profile(profile).min_followers == 120
 
     @pytest.mark.parametrize("value", ["-1", "abc", "1.5", "1000001"])
     def test_invalid_floors_are_rejected(self, session, value):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
 
         with pytest.raises(ProfileValidationError) as error:
             update_profile_settings(session, profile.id, "Synman", "20", min_followers=value)
@@ -125,7 +125,7 @@ class TestProfileSetting:
         assert "min_followers" in error.value.errors
 
     def test_leaving_the_floor_out_keeps_it(self, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
         update_profile_settings(session, profile.id, "Synman", "20", min_followers="75")
 
         update_profile_settings(session, profile.id, "Synman Live", "20")
@@ -133,7 +133,7 @@ class TestProfileSetting:
         assert profile.min_followers == 75
 
     def test_the_database_refuses_a_negative_floor(self, session):
-        session.add(Profile(name="Broken", min_followers=-5))
+        session.add(Profile(name="Broken", min_followers=-5, artist_id=default_artist_id(session)))
 
         with pytest.raises(IntegrityError):
             session.flush()
@@ -176,7 +176,7 @@ class TestWebSetting:
         return client.post(f"/profiles/{profile_id}/settings", data=data, headers=headers)
 
     def test_the_settings_form_shows_the_floor(self, client, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
 
         html = client.get(f"/profiles/{profile.id}", headers={"accept": "text/html"}).text
 
@@ -184,7 +184,7 @@ class TestWebSetting:
         assert 'value="50"' in html
 
     def test_saving_a_new_floor(self, client, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
 
         response = self.post_settings(
             client, profile.id, {"name": "Synman", "digest_target": "20", "min_followers": "200"}
@@ -195,7 +195,7 @@ class TestWebSetting:
         assert profile.min_followers == 200
 
     def test_an_invalid_floor_is_explained(self, client, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
 
         response = self.post_settings(
             client, profile.id, {"name": "Synman", "digest_target": "20", "min_followers": "lots"}

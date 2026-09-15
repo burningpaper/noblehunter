@@ -19,7 +19,7 @@ from core.profile_contents import (
     set_search_term_status,
 )
 from core.profiles import ProfileValidationError, create_profile, set_profile_active
-from tests.factories import make_playlist
+from tests.factories import default_artist_id, make_playlist
 from tests.profile_helpers import add_contents
 
 TRACK = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"
@@ -27,7 +27,7 @@ TRACK = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"
 
 @pytest.fixture
 def profile(session):
-    return create_profile(session, "Synman")
+    return create_profile(session, default_artist_id(session), "Synman")
 
 
 def ordered_tags(profile):
@@ -90,7 +90,7 @@ class TestGenres:
         assert [g.priority for g in sorted(profile.genres, key=lambda g: g.priority)] == [0, 1]
 
     def test_another_profiles_genre_cannot_be_touched(self, session, profile):
-        other = create_profile(session, "Side Project")
+        other = create_profile(session, default_artist_id(session), "Side Project")
         genre = add_genre(session, other.id, "IDM")
 
         with pytest.raises(LookupError):
@@ -255,7 +255,7 @@ class TestSearchTerms:
 
 class TestReadinessIsKept:
     def test_removing_something_essential_pauses_an_active_profile(self, session):
-        profile = add_contents(session, create_profile(session, "Synman"))
+        profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
         set_profile_active(session, profile.id, True)
 
         auto_paused = remove_reference_artist(session, profile.id, profile.reference_artists[0].id)
@@ -264,7 +264,7 @@ class TestReadinessIsKept:
         assert profile.is_active is False
 
     def test_pausing_a_term_below_the_minimum_pauses_the_profile(self, session):
-        profile = add_contents(session, create_profile(session, "Synman"))
+        profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
         set_profile_active(session, profile.id, True)
 
         auto_paused = set_search_term_status(session, profile.id, profile.search_terms[0].id, "paused")
@@ -273,7 +273,9 @@ class TestReadinessIsKept:
         assert profile.is_active is False
 
     def test_removals_that_keep_it_ready_leave_it_active(self, session):
-        profile = add_contents(session, create_profile(session, "Synman"), artists=4)
+        profile = add_contents(
+            session, create_profile(session, default_artist_id(session), "Synman"), artists=4
+        )
         set_profile_active(session, profile.id, True)
 
         auto_paused = remove_reference_artist(session, profile.id, profile.reference_artists[0].id)

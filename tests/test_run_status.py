@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from core.models import Run, RunRequestStatus, RunStatus, RunTrigger, WorkerState, WorkerStatus
 from core.profiles import create_profile
 from core.run_status import NO_RUN_WARNING_AFTER, RUNNER_OFFLINE_AFTER, request_run, run_status
+from tests.factories import default_artist_id
 
 NOW = datetime(2026, 9, 15, 9, 0, tzinfo=UTC)
 
@@ -51,7 +52,7 @@ class TestRequestingARun:
         assert second.id == first.id
 
     def test_a_single_profile_run_is_its_own_scope(self, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
         everything, _ = request_run(session, requested_by="owner@example.com")
 
         just_one, created = request_run(session, requested_by="owner@example.com", profile_id=profile.id)

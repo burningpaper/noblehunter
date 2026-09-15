@@ -23,11 +23,12 @@ from core.suggestions import (
     profile_context,
     validate_prompt,
 )
+from tests.factories import default_artist_id
 
 
 @pytest.fixture
 def profile(session):
-    return create_profile(session, "Synman")
+    return create_profile(session, default_artist_id(session), "Synman")
 
 
 class FakeMessages:

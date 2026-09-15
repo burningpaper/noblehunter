@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from core.models import Profile, SearchTermStatus
+from core.models import Artist, Profile, SearchTermStatus
 from core.profile_rules import (
     DEFAULT_DIGEST_TARGET,
     MAX_DIGEST_TARGET,
@@ -57,9 +57,13 @@ def get_profile(session: Session, profile_id: int) -> Profile:
     return profile
 
 
-def create_profile(session: Session, name: str, digest_target: int | str = DEFAULT_DIGEST_TARGET) -> Profile:
-    clean_name, target, _ = _validated_settings(session, name, digest_target, profile_id=None)
-    profile = Profile(name=clean_name, digest_target=target)
+def create_profile(
+    session: Session, artist_id: int, name: str, digest_target: int | str = DEFAULT_DIGEST_TARGET
+) -> Profile:
+    if session.get(Artist, artist_id) is None:
+        raise ProfileValidationError({"artist_id": "Choose which artist this profile is for"})
+    clean_name, target, _ = _validated_settings(session, artist_id, name, digest_target, profile_id=None)
+    profile = Profile(artist_id=artist_id, name=clean_name, digest_target=target)
     session.add(profile)
     session.flush()
     return profile
@@ -74,12 +78,20 @@ def update_profile_settings(
 ) -> Profile:
     """Rename and retune a profile. Leaving `min_followers` out keeps the current floor."""
     profile = get_profile(session, profile_id)
-    clean_name, target, floor = _validated_settings(session, name, digest_target, profile_id, min_followers)
+    clean_name, target, floor = _validated_settings(
+        session, profile.artist_id, name, digest_target, profile_id, min_followers
+    )
     profile.name, profile.digest_target = clean_name, target
     if floor is not None:
         profile.min_followers = floor
     session.flush()
     return profile
+
+
+def artist_choices(session: Session) -> list[tuple[int, str]]:
+    """Every artist as (id, name), for the new-profile form. Stage 2 narrows this to the viewer's."""
+    rows = session.execute(select(Artist.id, Artist.name).order_by(func.lower(Artist.name), Artist.id))
+    return [(artist_id, name) for artist_id, name in rows]
 
 
 def set_profile_active(session: Session, profile_id: int, active: bool) -> Profile:
@@ -146,6 +158,7 @@ def _problems(genres: int, artists: int, tracks: int, active_terms: int) -> list
 
 def _validated_settings(
     session: Session,
+    artist_id: int,
     name: str,
     digest_target: int | str,
     profile_id: int | None,
@@ -157,8 +170,8 @@ def _validated_settings(
         errors["name"] = "Give the profile a name"
     elif len(clean_name) > MAX_NAME_LENGTH:
         errors["name"] = f"Keep the name to {MAX_NAME_LENGTH} characters or fewer"
-    elif _name_taken(session, clean_name, profile_id):
-        errors["name"] = f"A profile called “{clean_name}” already exists"
+    elif _name_taken(session, artist_id, clean_name, profile_id):
+        errors["name"] = f"A profile called “{clean_name}” already exists for this artist"
 
     target = _parse_digest_target(digest_target)
     if target is None:
@@ -191,8 +204,8 @@ def _parse_min_followers(value: int | str) -> int | None:
     return number if number <= MAX_MIN_FOLLOWERS else None
 
 
-def _name_taken(session: Session, name: str, profile_id: int | None) -> bool:
-    query = select(Profile.id).where(func.lower(Profile.name) == name.lower())
+def _name_taken(session: Session, artist_id: int, name: str, profile_id: int | None) -> bool:
+    query = select(Profile.id).where(Profile.artist_id == artist_id, func.lower(Profile.name) == name.lower())
     if profile_id is not None:
         query = query.where(Profile.id != profile_id)
     return session.scalar(query.limit(1)) is not None

@@ -11,6 +11,7 @@ from core.profiles import create_profile, set_profile_active
 from pipeline.nightly import run_pipeline
 from pipeline.search import QUERY_PREFIX, ProviderResult, SearchHit
 from pipeline.spotify import PlaylistData, Track
+from tests.factories import default_artist_id
 from tests.profile_helpers import add_contents
 
 TODAY = date(2026, 9, 14)
@@ -75,7 +76,7 @@ class FakeFetcher:
 @pytest.fixture
 def synman(session):
     """Active; reference artists 'Artist 0-2'; search terms 'term 0-4'."""
-    profile = add_contents(session, create_profile(session, "Synman"))
+    profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
     set_profile_active(session, profile.id, True)
     return profile
 
@@ -97,7 +98,7 @@ def test_a_run_discovers_then_evaluates(session, synman):
 
 
 def test_paused_profiles_are_not_searched(session, synman):
-    paused = create_profile(session, "Paused")
+    paused = create_profile(session, default_artist_id(session), "Paused")
     add_search_term(session, paused.id, "paused term")
     provider = FakeProvider({})
 
@@ -107,7 +108,7 @@ def test_paused_profiles_are_not_searched(session, synman):
 
 
 def test_a_run_can_be_narrowed_to_one_profile(session, synman):
-    other = add_contents(session, create_profile(session, "Other"))
+    other = add_contents(session, create_profile(session, default_artist_id(session), "Other"))
     set_profile_active(session, other.id, True)
 
     report = run(session, [FakeProvider({})], FakeFetcher(), profile_id=other.id)
@@ -116,7 +117,7 @@ def test_a_run_can_be_narrowed_to_one_profile(session, synman):
 
 
 def test_narrowing_to_a_paused_profile_is_refused_before_starting(session, synman):
-    paused = create_profile(session, "Paused")
+    paused = create_profile(session, default_artist_id(session), "Paused")
 
     with pytest.raises(ValueError, match="not active"):
         run(session, [FakeProvider({})], FakeFetcher(), profile_id=paused.id)

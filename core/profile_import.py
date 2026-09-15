@@ -11,12 +11,13 @@ The caller owns the transaction: this flushes but never commits.
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.models import (
     AntiSignal,
     AntiSignalKind,
+    Artist,
     Profile,
     ProfileGenre,
     ProfileTrack,
@@ -26,6 +27,7 @@ from core.models import (
     SearchTermStatus,
 )
 from core.profile_config import ProfileConfig
+from core.profile_rules import MAX_NAME_LENGTH
 from core.text import normalize_text
 
 
@@ -36,11 +38,13 @@ class ImportResult:
     terms_added: int
 
 
-def import_profile(session: Session, config: ProfileConfig) -> ImportResult:
-    profile = session.scalar(select(Profile).where(Profile.name == config.name))
+def import_profile(session: Session, artist_id: int, config: ProfileConfig) -> ImportResult:
+    profile = session.scalar(
+        select(Profile).where(Profile.artist_id == artist_id, Profile.name == config.name)
+    )
     created = profile is None
     if created:
-        profile = Profile(name=config.name)
+        profile = Profile(artist_id=artist_id, name=config.name)
         session.add(profile)
 
     profile.is_active = config.active
@@ -50,6 +54,27 @@ def import_profile(session: Session, config: ProfileConfig) -> ImportResult:
 
     session.flush()
     return ImportResult(profile_id=profile.id, created=created, terms_added=terms_added)
+
+
+def artist_for_import(session: Session, name: str | None) -> int:
+    """The artist named (created if it's new), or the only artist there is."""
+    if name is not None:
+        clean = " ".join(name.split())
+        if not clean or len(clean) > MAX_NAME_LENGTH:
+            raise LookupError(f"Give --artist a name of 1 to {MAX_NAME_LENGTH} characters.")
+        artist = session.scalar(select(Artist).where(func.lower(Artist.name) == clean.lower()))
+        if artist is None:
+            artist = Artist(name=clean)
+            session.add(artist)
+            session.flush()
+        return artist.id
+
+    ids = list(session.scalars(select(Artist.id).order_by(Artist.id).limit(2)))
+    if len(ids) == 1:
+        return ids[0]
+    if not ids:
+        raise LookupError("There are no artists yet. Pass --artist NAME to create one.")
+    raise LookupError("There's more than one artist. Say which with --artist NAME.")
 
 
 def _replace_lists(session: Session, profile: Profile, config: ProfileConfig) -> None:

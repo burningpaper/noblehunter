@@ -21,6 +21,7 @@ from pipeline.worker import (
     tick,
     write_heartbeat,
 )
+from tests.factories import default_artist_id
 
 JOHANNESBURG = ZoneInfo("Africa/Johannesburg")
 SCHEDULE = Schedule(at=time(2, 0), tz=JOHANNESBURG)
@@ -107,7 +108,7 @@ class TestSchedule:
 
 class TestClaimingRequests:
     def test_claims_the_oldest_pending_request(self, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
         older = add_request(session, requested_at=at(9, 0), profile_id=profile.id)
         add_request(session, requested_at=at(9, 5))
 
@@ -131,7 +132,7 @@ class TestClaimingRequests:
 
 class TestTick:
     def test_a_run_now_request_is_run_and_marked_done(self, session):
-        profile = create_profile(session, "Synman")
+        profile = create_profile(session, default_artist_id(session), "Synman")
         request = add_request(session, requested_at=at(9, 0), profile_id=profile.id)
         runner = FakeRunner(now=at(9, 1))
 

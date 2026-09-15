@@ -17,7 +17,7 @@ from pipeline.fit_judge import FitJudgeError, FitOpinion
 from pipeline.nightly import describe_run, run_pipeline
 from pipeline.qualify import CLAUDE_MATCH_SCORE
 from pipeline.runs import start_run
-from tests.factories import make_playlist
+from tests.factories import default_artist_id, make_playlist
 from tests.profile_helpers import add_contents
 from tests.test_pipeline_evaluate import NOW, TODAY, FakeFetcher, data, evaluate, pid
 from tests.test_pipeline_nightly import FakeProvider
@@ -28,7 +28,7 @@ STRANGERS = ("Nobody", "Nope", "Nada")
 @pytest.fixture
 def profile(session):
     """Active; reference artists 'Artist 0-2'; genre 'Genre 0'; search terms 'term 0-4'."""
-    profile = add_contents(session, create_profile(session, "Synman"))
+    profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
     set_profile_active(session, profile.id, True)
     return profile
 

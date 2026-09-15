@@ -3,8 +3,20 @@
 from datetime import UTC, date, datetime
 from itertools import count
 
+from sqlalchemy import select
+
 from core.contacts import contact_key, email_domain_key
-from core.models import Contact, Curator, Outreach, Playlist, PlaylistStatus, Profile
+from core.models import (
+    Artist,
+    ArtistMember,
+    Contact,
+    Curator,
+    Outreach,
+    Playlist,
+    PlaylistStatus,
+    Profile,
+    User,
+)
 
 _sequence = count(1)
 
@@ -13,8 +25,39 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
-def make_profile(session, name: str | None = None) -> Profile:
-    profile = Profile(name=name or f"Profile {next(_sequence)}")
+DEFAULT_ARTIST = "Test Artist"
+
+
+def make_artist(session, name: str | None = None) -> Artist:
+    artist = Artist(name=name or f"Artist {next(_sequence)}")
+    session.add(artist)
+    session.flush()
+    return artist
+
+
+def default_artist_id(session) -> int:
+    """The artist a test's profiles belong to when the test doesn't care which."""
+    existing = session.scalar(select(Artist.id).where(Artist.name == DEFAULT_ARTIST))
+    return existing if existing is not None else make_artist(session, DEFAULT_ARTIST).id
+
+
+def make_user(session, email: str | None = None) -> User:
+    user = User(email=email or f"person{next(_sequence)}@example.com")
+    session.add(user)
+    session.flush()
+    return user
+
+
+def make_member(session, artist: Artist, user: User | None = None) -> User:
+    user = user or make_user(session)
+    session.add(ArtistMember(artist_id=artist.id, user_id=user.id))
+    session.flush()
+    return user
+
+
+def make_profile(session, name: str | None = None, artist: Artist | None = None) -> Profile:
+    artist_id = artist.id if artist is not None else default_artist_id(session)
+    profile = Profile(name=name or f"Profile {next(_sequence)}", artist_id=artist_id)
     session.add(profile)
     session.flush()
     return profile

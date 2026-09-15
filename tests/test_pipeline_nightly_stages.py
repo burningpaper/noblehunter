@@ -10,13 +10,14 @@ from sqlalchemy import select
 from core.models import Playlist, Run
 from core.profiles import create_profile, set_profile_active
 from pipeline.nightly import StageReport, describe_run, run_pipeline
+from tests.factories import default_artist_id
 from tests.profile_helpers import add_contents
 from tests.test_pipeline_nightly import NOW, TODAY, FakeFetcher, FakeProvider, pid
 
 
 @pytest.fixture
 def active_profile(session):
-    profile = add_contents(session, create_profile(session, "Synman"))
+    profile = add_contents(session, create_profile(session, default_artist_id(session), "Synman"))
     set_profile_active(session, profile.id, True)
     return profile
 

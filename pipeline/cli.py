@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from core.db_roles import create_app_roles, grant_privileges
 from core.models import Profile
 from core.profile_config import ProfileConfigError, load_profile_config
-from core.profile_import import import_profile
+from core.profile_import import artist_for_import, import_profile
 from core.settings import MissingSettingError, load_settings
 from pipeline.briefs import ClaudeBriefWriter
 from pipeline.fit_judge import ClaudeFitJudge, FitJudge
@@ -80,7 +80,15 @@ def describe_db_error(error: SQLAlchemyError) -> str:
 
 
 @profile_app.command("import")
-def import_command(path: Annotated[Path, typer.Argument(help="Path to a profile YAML file.")]) -> None:
+def import_command(
+    path: Annotated[Path, typer.Argument(help="Path to a profile YAML file.")],
+    artist: Annotated[
+        str | None,
+        typer.Option(
+            help="Artist the profile belongs to (created if new). Needed once there's more than one."
+        ),
+    ] = None,
+) -> None:
     """Create or update a profile from a YAML file."""
     try:
         config = load_profile_config(path)
@@ -91,8 +99,10 @@ def import_command(path: Annotated[Path, typer.Argument(help="Path to a profile 
     engine = create_engine(settings.sqlalchemy_url(pooled=False))
     try:
         with Session(engine) as session:
-            result = import_profile(session, config)
+            result = import_profile(session, artist_for_import(session, artist), config)
             session.commit()
+    except LookupError as error:
+        raise fail(str(error)) from None
     except SQLAlchemyError as error:
         # Name the failure without echoing connection details.
         raise fail(f"Database error while importing {config.name!r}: {describe_db_error(error)}") from None
@@ -389,10 +399,16 @@ def report_command(
 
 
 def _profile_id_by_name(session: Session, name: str) -> int:
-    profile_id = session.scalar(select(Profile.id).where(func.lower(Profile.name) == name.strip().lower()))
-    if profile_id is None:
+    ids = list(
+        session.scalars(select(Profile.id).where(func.lower(Profile.name) == name.strip().lower()).limit(2))
+    )
+    if not ids:
         raise LookupError(f"No profile called “{name}”.")
-    return profile_id
+    if len(ids) > 1:
+        raise LookupError(
+            f"More than one artist has a profile called “{name}”. Rename one in the web app first."
+        )
+    return ids[0]
 
 
 if __name__ == "__main__":

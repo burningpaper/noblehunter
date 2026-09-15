@@ -6,11 +6,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
-from core.models import Profile, SearchTerm
+from core.models import Artist, Profile, SearchTerm
 from core.profile_config import load_profile_config
 from core.profile_import import import_profile
 from pipeline.cli import app
 from tests.conftest import TEST_DATABASE_URL
+from tests.factories import default_artist_id, make_artist
 
 REPO_ROOT = Path(__file__).parent.parent
 TRACK_URL = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"
@@ -39,7 +40,7 @@ def config_from(tmp_path: Path, content: str = PROFILE_YAML):
 
 class TestImportProfile:
     def test_new_profile_gets_everything(self, session, tmp_path):
-        result = import_profile(session, config_from(tmp_path))
+        result = import_profile(session, default_artist_id(session), config_from(tmp_path))
 
         profile = session.get(Profile, result.profile_id)
         assert result.created is True
@@ -62,18 +63,18 @@ class TestImportProfile:
         }
 
     def test_genres_keep_priority_order(self, session, tmp_path):
-        result = import_profile(session, config_from(tmp_path))
+        result = import_profile(session, default_artist_id(session), config_from(tmp_path))
 
         genres = sorted(session.get(Profile, result.profile_id).genres, key=lambda g: g.priority)
         assert [g.tag for g in genres] == ["IDM", "braindance", "ambient electronica"]
 
     def test_reimport_updates_settings_and_replaces_lists(self, session, tmp_path):
-        import_profile(session, config_from(tmp_path))
+        import_profile(session, default_artist_id(session), config_from(tmp_path))
         changed = PROFILE_YAML.replace("digest_target: 12", "digest_target: 8").replace(
             "[Aphex Twin, Boards of Canada, Autechre]", "[Plaid, Ochre, Autechre]"
         )
 
-        result = import_profile(session, config_from(tmp_path, changed))
+        result = import_profile(session, default_artist_id(session), config_from(tmp_path, changed))
 
         profile = session.get(Profile, result.profile_id)
         assert result.created is False
@@ -81,7 +82,7 @@ class TestImportProfile:
         assert sorted(a.display_name for a in profile.reference_artists) == ["Autechre", "Ochre", "Plaid"]
 
     def test_reimport_adds_terms_but_never_deletes_existing_ones(self, session, tmp_path):
-        first = import_profile(session, config_from(tmp_path))
+        first = import_profile(session, default_artist_id(session), config_from(tmp_path))
         session.add(
             SearchTerm(
                 profile_id=first.profile_id,
@@ -95,7 +96,7 @@ class TestImportProfile:
             "[glitchy ambient, braindance playlist]", "[glitchy ambient, IDM playlist]"
         )
 
-        import_profile(session, config_from(tmp_path, changed))
+        import_profile(session, default_artist_id(session), config_from(tmp_path, changed))
 
         terms = session.scalars(
             select(SearchTerm.term).where(SearchTerm.profile_id == first.profile_id)
@@ -108,15 +109,22 @@ class TestImportProfile:
         ]
 
     def test_reimport_does_not_duplicate_existing_terms_with_different_spelling(self, session, tmp_path):
-        first = import_profile(session, config_from(tmp_path))
+        first = import_profile(session, default_artist_id(session), config_from(tmp_path))
         changed = PROFILE_YAML.replace("[glitchy ambient, braindance playlist]", "[Glitchy  Ambient]")
 
-        import_profile(session, config_from(tmp_path, changed))
+        import_profile(session, default_artist_id(session), config_from(tmp_path, changed))
 
         count = len(
             session.scalars(select(SearchTerm).where(SearchTerm.profile_id == first.profile_id)).all()
         )
         assert count == 2
+
+    def test_the_same_file_can_be_imported_for_two_artists(self, session, tmp_path):
+        first = import_profile(session, make_artist(session).id, config_from(tmp_path))
+        second = import_profile(session, make_artist(session).id, config_from(tmp_path))
+
+        assert first.profile_id != second.profile_id
+        assert first.created and second.created
 
 
 class TestProfileImportCommand:
@@ -126,7 +134,9 @@ class TestProfileImportCommand:
         example = REPO_ROOT / "config" / "profiles" / "example.yaml"
 
         try:
-            result = CliRunner().invoke(app, ["profile", "import", str(example)])
+            result = CliRunner().invoke(
+                app, ["profile", "import", str(example), "--artist", "CLI Import Artist"]
+            )
 
             assert result.exit_code == 0, result.output
             assert "Example Profile" in result.output
@@ -135,6 +145,7 @@ class TestProfileImportCommand:
         finally:
             with Session(engine) as session:
                 session.execute(delete(Profile).where(Profile.name == "Example Profile"))
+                session.execute(delete(Artist).where(Artist.name == "CLI Import Artist"))
                 session.commit()
 
     def test_invalid_file_exits_with_readable_error(self, monkeypatch, tmp_path):

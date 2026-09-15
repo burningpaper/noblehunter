@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from core.profile_contents import add_reference_artist
 from core.profiles import create_profile
 from core.suggestions import Suggestion, SuggestionError
+from tests.factories import default_artist_id
 from tests.web_helpers import FakeGoogle, csrf_token, sign_in, web_settings
 from web.app import create_app
 from web.db import get_db
@@ -44,7 +45,7 @@ def make_client(session):
 
 @pytest.fixture
 def profile(session):
-    return create_profile(session, "Synman")
+    return create_profile(session, default_artist_id(session), "Synman")
 
 
 def post(client: TestClient, path: str, data: dict):
