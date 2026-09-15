@@ -144,6 +144,7 @@ def test_an_admin_removed_from_allowed_emails_is_stopped(session):
     response = client.get("/profiles", headers=HTML)
 
     assert response.status_code == 403
+    assert client.get("/", headers=HTML).status_code == 303
 
 
 def test_a_member_sees_the_friendly_admins_only_page(session):

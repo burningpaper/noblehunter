@@ -89,7 +89,7 @@ async def auth_callback(request: Request, db: DbSession) -> Response:
     viewer = await run_in_threadpool(_admit, db, admins, raw_email, userinfo) if verified else None
     if viewer is None:
         request.session.clear()  # a refused attempt must not leave an earlier session behind
-        logger.warning("Refused sign-in for %s (email verified: %s)", raw_email or "<no email>", verified)
+        logger.warning("Refused sign-in for %r (email verified: %s)", raw_email or "<no email>", verified)
         return templates.TemplateResponse(request, "errors/access_denied.html", status_code=403)
 
     next_url = safe_next(request.session.get(SESSION_NEXT))
