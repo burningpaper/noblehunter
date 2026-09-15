@@ -2,12 +2,11 @@
 <div id="people-content" class="split-layout">
   <section aria-labelledby="artists-heading">
     <h2 id="artists-heading" class="visually-hidden">Artists</h2>
-    {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 
     {% if artists %}
     <ul class="people-list" role="list">
       {% for artist in artists %}
-      <li class="card people-artist rise" aria-labelledby="artist-{{ artist.id }}-name">
+      <li class="card people-artist" aria-labelledby="artist-{{ artist.id }}-name">
         <div class="people-artist__header">
           <h3 class="card__title" id="artist-{{ artist.id }}-name">{{ artist.name }}</h3>
           <span class="tag">{{ artist.profile_count }} {{ "profile" if artist.profile_count == 1 else "profiles" }}</span>
@@ -27,7 +26,7 @@
                     hx-post="/people/artists/{{ artist.id }}/members/{{ member.user_id }}/remove"
                     hx-target="#people-content" hx-swap="outerHTML" hx-disabled-elt="this"
                     hx-confirm="Take {{ member.email }} off {{ artist.name }}?">
-              Remove <span class="visually-hidden">{{ member.email }}</span>
+              Remove <span class="visually-hidden">{{ member.email }} from {{ artist.name }}</span>
               <span class="htmx-indicator spinner" aria-hidden="true"></span>
             </button>
           </li>
@@ -41,25 +40,26 @@
               hx-target="#people-content" hx-swap="outerHTML" hx-disabled-elt="find button" novalidate>
           <div class="form__row">
             <label class="visually-hidden" for="rename-{{ artist.id }}">New name for {{ artist.name }}</label>
-            <input class="input" id="rename-{{ artist.id }}" name="name" value="{{ artist.name }}" maxlength="80"
+            <input class="input" id="rename-{{ artist.id }}" name="name"
+                   value="{{ rename_values.get(artist.id, artist.name) }}" maxlength="80"
                    autocomplete="off"{% if rename_errors.get(artist.id) %} aria-invalid="true" aria-describedby="rename-{{ artist.id }}-error"{% endif %}>
             <button class="button button--small" type="submit">Rename <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
           </div>
-          {% if rename_errors.get(artist.id) %}<p class="field__error" id="rename-{{ artist.id }}-error">{{ rename_errors.get(artist.id) }}</p>{% endif %}
+          {% if rename_errors.get(artist.id) %}<p class="field__error" id="rename-{{ artist.id }}-error" role="alert">{{ rename_errors.get(artist.id) }}</p>{% endif %}
         </form>
       </li>
       {% endfor %}
     </ul>
     {% else %}
     <div class="card empty-state rise">
-      <h2 class="empty-state__title">No artists yet</h2>
+      <h3 class="empty-state__title">No artists yet</h3>
       <p class="empty-state__body">Add the first person and name their artist at the same time.</p>
     </div>
     {% endif %}
   </section>
 
   <div class="stack">
-    <aside class="card rise" aria-labelledby="add-person-heading">
+    <aside class="card" aria-labelledby="add-person-heading">
       <h2 id="add-person-heading" class="card__title">Add a person</h2>
       <form class="form" hx-post="/people/members" hx-target="#people-content" hx-swap="outerHTML"
             hx-disabled-elt="find button" novalidate>
@@ -69,7 +69,7 @@
                  aria-describedby="person-email-hint{% if errors.email %} person-email-error{% endif %}"
                  {% if errors.email %}aria-invalid="true"{% endif %}>
           <p class="field__hint" id="person-email-hint">Use the exact address of their Google account.</p>
-          {% if errors.email %}<p class="field__error" id="person-email-error">{{ errors.email }}</p>{% endif %}
+          {% if errors.email %}<p class="field__error" id="person-email-error" role="alert">{{ errors.email }}</p>{% endif %}
         </div>
         <div class="field">
           <label class="field__label" for="person-artist">Artist</label>
@@ -84,9 +84,11 @@
         <div class="field">
           <label class="field__label" for="person-new-artist">New artist's name</label>
           <input class="input" id="person-new-artist" name="new_artist_name" value="{{ form.new_artist_name }}" maxlength="80"
-                 autocomplete="off" aria-describedby="person-new-artist-hint">
+                 autocomplete="off"
+                 aria-describedby="person-new-artist-hint{% if errors.artist %} person-artist-error{% endif %}"
+                 {% if errors.artist %}aria-invalid="true"{% endif %}>
           <p class="field__hint" id="person-new-artist-hint">Only needed when you chose New artist.</p>
-          {% if errors.artist %}<p class="field__error" id="person-artist-error">{{ errors.artist }}</p>{% endif %}
+          {% if errors.artist %}<p class="field__error" id="person-artist-error" role="alert">{{ errors.artist }}</p>{% endif %}
         </div>
         <div class="form__actions">
           <button class="button button--primary" type="submit">Add person <span class="htmx-indicator spinner" aria-hidden="true"></span></button>
@@ -94,7 +96,7 @@
       </form>
     </aside>
 
-    <aside class="card rise" aria-labelledby="admins-heading">
+    <aside class="card" aria-labelledby="admins-heading">
       <h2 id="admins-heading" class="card__title">Admins</h2>
       <p class="field__hint">Admins see every artist. They're set in ALLOWED_EMAILS on Vercel, not here.</p>
       <ul class="people-members" role="list">

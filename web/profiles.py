@@ -25,6 +25,7 @@ from core.profiles import (
 )
 from web.budget import budget_context
 from web.db import get_db
+from web.forms import form_id
 from web.runs import panel_context
 from web.templating import templates
 
@@ -55,7 +56,7 @@ def create(
     artist_id: FormText = "",
 ) -> Response:
     try:
-        profile = create_profile(db, _form_id(artist_id), name, digest_target)
+        profile = create_profile(db, form_id(artist_id), name, digest_target)
         db.commit()
     except ProfileValidationError as error:
         context = {
@@ -65,12 +66,6 @@ def create(
         }
         return templates.TemplateResponse(request, "profiles/_create_form.html", context, status_code=422)
     return _redirect(request, f"/profiles/{profile.id}")
-
-
-def _form_id(raw: str) -> int:
-    """A posted id, or 0 (which matches nothing) when it isn't a whole number."""
-    text = raw.strip()
-    return int(text) if text.isascii() and text.isdigit() else 0
 
 
 @router.get("/{profile_id}")

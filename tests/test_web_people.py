@@ -1,5 +1,7 @@
 """The People page: admins add people to artists, rename artists and take people off them."""
 
+import re
+
 import pytest
 from sqlalchemy import select
 
@@ -19,6 +21,13 @@ def post(client, path: str, data: dict | None = None):
     return client.post(
         path, data=data or {}, headers={"x-csrf-token": csrf_token(client), "hx-request": "true"}
     )
+
+
+def oob_notice(html: str) -> str:
+    """The text inside the out-of-band #people-notice element, or fail if it isn't there."""
+    match = re.search(r'<div id="people-notice"[^>]*hx-swap-oob="true"[^>]*>(.*?)</div>', html, re.S)
+    assert match, html
+    return match.group(1).strip()
 
 
 class TestPage:
@@ -133,6 +142,7 @@ class TestArtistActions:
         assert response.status_code == 422
         # Jinja autoescapes the apostrophe in "There's" to &#39;, so match the escaping-safe part.
         assert "already an artist called" in response.text
+        assert 'value="taken"' in response.text
 
     def test_renaming_a_missing_artist_is_404(self, admin):
         assert post(admin, "/people/artists/999999/rename", {"name": "X"}).status_code == 404
@@ -151,3 +161,76 @@ class TestArtistActions:
         artist, user = make_artist(session), make_user(session)
 
         assert post(admin, f"/people/artists/{artist.id}/members/{user.id}/remove").status_code == 404
+
+    def test_removing_from_a_missing_artist_is_404(self, admin, session):
+        user = make_user(session)
+
+        assert post(admin, f"/people/artists/999999/members/{user.id}/remove").status_code == 404
+
+    def test_removing_a_missing_user_is_404(self, admin, session):
+        artist = make_artist(session)
+
+        assert post(admin, f"/people/artists/{artist.id}/members/999999/remove").status_code == 404
+
+
+class TestFocusAndAnnouncements:
+    """After a POST, htmx swaps #people-content and focus falls to <body>. A permanent live
+    region outside that swap, refreshed out of band, lets a screen reader announce what
+    happened; a small script moves keyboard focus there (or to the first invalid field)."""
+
+    def test_the_page_loads_a_static_script_for_focus_handling(self, admin):
+        html = admin.get("/people", headers=HTML).text
+
+        assert '<script src="/static/js/people.js" defer></script>' in html
+        assert admin.get("/static/js/people.js").status_code == 200
+
+    def test_a_successful_post_announces_the_notice_out_of_band(self, admin, session):
+        artist = make_artist(session, "Synman")
+
+        response = post(admin, "/people/members", {"email": "nik@example.com", "artist_id": str(artist.id)})
+
+        assert response.status_code == 200
+        assert (
+            oob_notice(response.text)
+            == "Added nik@example.com to Synman. They can sign in with that Google account."
+        )
+
+    def test_a_422_leaves_the_out_of_band_notice_empty(self, admin):
+        response = post(admin, "/people/members", {"email": "not-an-email", "artist_id": "new"})
+
+        assert response.status_code == 422
+        assert oob_notice(response.text) == ""
+
+
+class TestCsrf:
+    def test_every_people_post_needs_a_csrf_token(self, admin, session):
+        artist = make_artist(session, "Synman")
+        user = make_member(session, artist, make_user(session, "nik@example.com"))
+        headers = {"hx-request": "true"}  # no x-csrf-token
+
+        add_response = admin.post(
+            "/people/members",
+            data={"email": "x@example.com", "artist_id": "new", "new_artist_name": "X"},
+            headers=headers,
+        )
+        rename_response = admin.post(
+            f"/people/artists/{artist.id}/rename", data={"name": "New"}, headers=headers
+        )
+        remove_response = admin.post(
+            f"/people/artists/{artist.id}/members/{user.id}/remove", data={}, headers=headers
+        )
+
+        assert add_response.status_code == 403
+        assert rename_response.status_code == 403
+        assert remove_response.status_code == 403
+
+
+class TestEscaping:
+    def test_confirm_text_escapes_quotes_in_names_and_emails(self, admin, session):
+        artist = make_artist(session, 'a" onclick="alert(1)')
+        make_member(session, artist, make_user(session, "o'brien@example.com"))
+
+        html = admin.get("/people", headers=HTML).text
+
+        assert '" onclick="' not in html
+        assert "&#34;" in html

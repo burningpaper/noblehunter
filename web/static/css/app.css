@@ -1464,6 +1464,12 @@ code {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.people-artist__header .card__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .people-members {
@@ -1502,6 +1508,12 @@ code {
 .people-member__seen {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+}
+
+/* Reuses .notice for its look; :empty hides it (and its margin) between actions, since it's
+   a permanent live region that starts and often ends with nothing to announce. */
+.people-notice:empty {
+  display: none;
 }
 
 /* ---- Small screens: keep the header on one line ---------------------------------------- */

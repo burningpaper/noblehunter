@@ -1,0 +1,4 @@
+{# A permanent live region, always present outside #people-content. On a full page load it's
+   empty and static; a POST response refreshes it with an out-of-band swap so a screen reader
+   announces the result even though the swap itself replaces #people-content wholesale. #}
+<div id="people-notice" class="people-notice notice" role="status" aria-live="polite" tabindex="-1"{% if oob %} hx-swap-oob="true"{% endif %}>{{ notice or "" }}</div>
