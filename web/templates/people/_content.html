@@ -71,7 +71,6 @@
           <p class="field__hint" id="person-email-hint">Use the exact address of their Google account.</p>
           {% if errors.email %}<p class="field__error" id="person-email-error" role="alert">{{ errors.email }}</p>{% endif %}
         </div>
-        {% set existing_artist_chosen = form.artist_id and form.artist_id != "new" %}
         <div class="field">
           <label class="field__label" for="person-artist">Artist</label>
           <select class="input" id="person-artist" name="artist_id"

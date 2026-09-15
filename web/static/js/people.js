@@ -4,7 +4,8 @@
 // notice is announced by a screen reader because it's the thing that receives focus, not
 // because it's a live region -- so this listener focuses the first invalid field after a
 // validation error, or the notice otherwise, once the settle that swapped #people-content has
-// finished. It ignores the separate afterSettle firing for the #people-notice OOB swap itself.
+// finished. The event.target.id === "people-content" check keeps other htmx swaps elsewhere
+// on the page from moving focus.
 document.body.addEventListener("htmx:afterSettle", function (event) {
   if (!event.target || event.target.id !== "people-content") {
     return;

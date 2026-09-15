@@ -56,7 +56,14 @@ def add(
         )
         db.commit()
     except PeopleValidationError as error:
-        return _content(request, db, form=form, errors=error.errors, status_code=422)
+        return _content(
+            request,
+            db,
+            form=form,
+            errors=error.errors,
+            existing_artist_chosen=_chosen_artist(artist_id) is not None,
+            status_code=422,
+        )
     artist = _artist_named_for(db, artist_id, new_artist_name)
     return _content(
         request, db, notice=f"Added {user.email} to {artist}. They can sign in with that Google account."
@@ -115,6 +122,7 @@ def _context(request: Request, db: Session, **extra) -> dict:
         "now": datetime.now(UTC),
         "form": {"email": "", "artist_id": "", "new_artist_name": ""},
         "errors": {},
+        "existing_artist_chosen": False,
         "rename_errors": {},
         "rename_values": {},
         "notice": None,

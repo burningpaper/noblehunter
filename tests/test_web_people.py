@@ -146,6 +146,22 @@ class TestAddPerson:
         assert 'aria-invalid="true"' in new_artist_tag
         assert "person-artist-error" in new_artist_tag
 
+    def test_an_untrimmed_new_artist_id_invalidates_the_name_field_not_the_select(self, admin, session):
+        make_artist(session, "Taken")
+
+        response = post(
+            admin,
+            "/people/members",
+            {"email": "nik@example.com", "artist_id": " new ", "new_artist_name": "Taken"},
+        )
+
+        assert response.status_code == 422
+        select_tag = re.search(r'<select[^>]*id="person-artist"[^>]*>', response.text).group(0)
+        new_artist_tag = re.search(r'<input[^>]*id="person-new-artist"[^>]*>', response.text).group(0)
+        assert "aria-invalid" not in select_tag
+        assert 'aria-invalid="true"' in new_artist_tag
+        assert "person-artist-error" in new_artist_tag
+
 
 class TestArtistActions:
     def test_rename(self, admin, session):
