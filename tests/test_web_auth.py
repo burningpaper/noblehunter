@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from starlette.responses import RedirectResponse
 
 from web.app import create_app
+from web.db import get_db
 from web.settings import WebSettings
 
 ALLOWED = "owner@example.com"
@@ -51,8 +52,14 @@ def google():
 
 
 @pytest.fixture
-def client(google):
-    return TestClient(create_app(settings(), identity_provider=google), follow_redirects=False)
+def client(google, session):
+    app = create_app(settings(), identity_provider=google)
+
+    def use_test_session():
+        yield session
+
+    app.dependency_overrides[get_db] = use_test_session
+    return TestClient(app, follow_redirects=False)
 
 
 def sign_in(client) -> None:
@@ -176,12 +183,14 @@ class TestRefusals:
 
 
 class TestSessionCookie:
-    def test_cookie_is_httponly_lax_and_secure_in_production(self, google):
-        secure = TestClient(
-            create_app(settings(secure_cookies=True), identity_provider=google),
-            base_url="https://testserver",
-            follow_redirects=False,
-        )
+    def test_cookie_is_httponly_lax_and_secure_in_production(self, google, session):
+        app = create_app(settings(secure_cookies=True), identity_provider=google)
+
+        def use_test_session():
+            yield session
+
+        app.dependency_overrides[get_db] = use_test_session
+        secure = TestClient(app, base_url="https://testserver", follow_redirects=False)
         secure.get("/auth/google")
 
         response = secure.get("/auth/callback?state=fake&code=fake")

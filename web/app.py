@@ -10,7 +10,7 @@ then the signed session cookie, then the sign-in/CSRF guard, then the routes.
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -18,6 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from core.settings import MissingSettingError
 from core.suggestions import ClaudeSuggester, Suggester
+from web.access import CurrentViewer, current_viewer, install_access_handlers
 from web.auth import IdentityProvider, google_provider
 from web.auth import router as auth_router
 from web.budget import router as budget_router
@@ -67,20 +68,25 @@ def create_app(
     app.state.engine = build_engine(settings)
     app.state.identity_provider = identity_provider or google_provider(settings)
     app.state.suggester = suggester or _claude_suggester(settings)
-    app.include_router(auth_router)
-    app.include_router(digest_router)
-    app.include_router(profiles_router)
-    app.include_router(profile_contents_router)
-    app.include_router(suggestions_router)
-    app.include_router(runs_router)
-    app.include_router(budget_router)
+    install_access_handlers(app)
+    app.include_router(auth_router)  # sign-in and sign-out must work for someone without access
+    signed_in = [Depends(current_viewer)]
+    for router in (
+        digest_router,
+        profiles_router,
+        profile_contents_router,
+        suggestions_router,
+        runs_router,
+        budget_router,
+    ):
+        app.include_router(router, dependencies=signed_in)
 
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok", "configured": True}
 
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request) -> Response:
+    def home(request: Request, viewer: CurrentViewer) -> Response:
         return templates.TemplateResponse(request, "home.html")
 
     # Added innermost first: guard, then session, then security headers outermost.

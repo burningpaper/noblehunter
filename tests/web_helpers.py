@@ -5,6 +5,8 @@ import re
 from fastapi.testclient import TestClient
 from starlette.responses import RedirectResponse
 
+from web.app import create_app
+from web.db import get_db
 from web.settings import WebSettings
 
 ALLOWED = "owner@example.com"
@@ -53,3 +55,23 @@ def csrf_token(client: TestClient) -> str:
     match = re.search(r'"X-CSRF-Token":\s*"([^"]+)"', html)
     assert match, "CSRF token not rendered for htmx"
     return match.group(1)
+
+
+def app_client(session, google: FakeGoogle | None = None, **app_options) -> TestClient:
+    """A test client whose routes use the rolled-back test session. Not signed in."""
+    app = create_app(web_settings(), identity_provider=google or FakeGoogle(), **app_options)
+
+    def use_test_session():
+        yield session
+
+    app.dependency_overrides[get_db] = use_test_session
+    return TestClient(app, follow_redirects=False)
+
+
+def member_client(session, email: str = "member@example.com", **app_options) -> TestClient:
+    """A client signed in as `email`. Make them a member of an artist first, or sign-in is refused."""
+    google = FakeGoogle()
+    google.userinfo["email"] = email
+    client = app_client(session, google, **app_options)
+    sign_in(client)
+    return client

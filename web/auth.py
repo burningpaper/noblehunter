@@ -2,18 +2,24 @@
 
 Authlib does the OAuth work: it keeps state and nonce in the session, verifies the ID token's
 signature against Google's published keys, and checks the nonce. Our part is the policy:
-only a *verified* email on the allow-list gets a session, `next` can only point back into
-this site, and the session is rebuilt from scratch on every sign-in.
+only a *verified* email that is an admin (ALLOWED_EMAILS) or a member of an artist gets a
+session, `next` can only point back into this site, and the session is rebuilt from scratch
+on every sign-in.
 """
 
 import logging
 import secrets
-from typing import Protocol
+from datetime import UTC, datetime
+from typing import Annotated, Protocol
 
 from authlib.integrations.starlette_client import OAuth, OAuthError
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, Response
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from core.access import record_sign_in, viewer_for
+from web.db import get_db
 from web.sessions import SESSION_CSRF, SESSION_NEXT, SESSION_USER, current_user, safe_next
 from web.settings import WebSettings
 from web.templating import templates
@@ -45,6 +51,8 @@ def google_provider(settings: WebSettings) -> IdentityProvider:
 
 router = APIRouter()
 
+DbSession = Annotated[Session, Depends(get_db)]
+
 
 @router.get("/login", include_in_schema=False)
 def login(request: Request, next: str | None = None) -> Response:
@@ -65,7 +73,7 @@ async def start_google_sign_in(request: Request) -> Response:
 
 
 @router.get("/auth/callback", name="auth_callback", include_in_schema=False)
-async def auth_callback(request: Request) -> Response:
+async def auth_callback(request: Request, db: DbSession) -> Response:
     try:
         token = await request.app.state.identity_provider.authorize_access_token(request)
     except OAuthError as error:
@@ -75,7 +83,9 @@ async def auth_callback(request: Request) -> Response:
     userinfo = token.get("userinfo") or {}
     email = str(userinfo.get("email") or "").strip().lower()
     verified = userinfo.get("email_verified") is True
-    if not verified or email not in request.app.state.settings.allowed_email_set:
+    admins = request.app.state.settings.allowed_email_set
+    admitted = verified and await run_in_threadpool(_admit, db, admins, email, userinfo)
+    if not admitted:
         logger.warning("Refused sign-in for %s (email verified: %s)", email or "<no email>", verified)
         return templates.TemplateResponse(request, "errors/access_denied.html", status_code=403)
 
@@ -89,6 +99,17 @@ async def auth_callback(request: Request) -> Response:
     request.session[SESSION_CSRF] = secrets.token_urlsafe(32)
     logger.info("Signed in %s", email)
     return RedirectResponse(next_url, status_code=303)
+
+
+def _admit(db: Session, admins: frozenset[str], email: str, userinfo: dict) -> bool:
+    """True if this email may come in (admin or member); records the sign-in when it may."""
+    if viewer_for(db, email, admins) is None:
+        return False
+    record_sign_in(
+        db, email=email, name=userinfo.get("name"), picture_url=userinfo.get("picture"), now=datetime.now(UTC)
+    )
+    db.commit()
+    return True
 
 
 @router.post("/logout", include_in_schema=False)
