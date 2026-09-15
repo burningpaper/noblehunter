@@ -22,6 +22,7 @@
     <nav class="site-nav" aria-label="Main">
       <a class="site-nav__link" href="/digest">Digest</a>
       <a class="site-nav__link" href="/profiles">Profiles</a>
+      {% if is_admin %}<a class="site-nav__link" href="/people">People</a>{% endif %}
       <span class="user-chip">
         {% if current_user.picture %}
         <img class="user-chip__avatar" src="{{ current_user.picture }}" alt="" width="24" height="24" referrerpolicy="no-referrer">

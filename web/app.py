@@ -25,6 +25,7 @@ from web.budget import router as budget_router
 from web.db import build_engine
 from web.digest import router as digest_router
 from web.guard import install_guard
+from web.people import router as people_router
 from web.profile_contents import router as profile_contents_router
 from web.profiles import router as profiles_router
 from web.runs import router as runs_router
@@ -78,6 +79,7 @@ def create_app(
         suggestions_router,
         runs_router,
         budget_router,
+        people_router,
     ):
         app.include_router(router, dependencies=signed_in)
 
