@@ -59,7 +59,7 @@ So before any email work, the app learns who owns what. Each artist sees only th
 **Digest page.**
 - Members see entries for their artists' profiles.
 - Admins see all entries, grouped by artist then profile.
-- The night's pipeline counts at the bottom stay whole-app numbers.
+- The night's pipeline counts at the bottom stay whole-app numbers, so only admins see them. Members see no counts at all.
 
 **Everything else** (profile pages, Ask Claude, verdicts, and later the mail routes) follows one rule. Asking for something you can't see returns **404 Not Found**, so an outsider can't tell whether it exists.
 

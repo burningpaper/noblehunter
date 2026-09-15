@@ -225,7 +225,7 @@ Status: Not Started
 ## Stage 11: Artists and access
 Goal: Several artists use Noble Hunter without seeing each other's work or competing for curators.
 Success Criteria: Plan tasks in docs/superpowers/plans/2026-09-15-artists-and-access.md pass; a member of one artist gets 404 for every route on another artist's data; the same curator can reach two artists' digests on one night.
-Status: In Progress (stage 1 of 3 built, not yet shipped)
+Status: In Progress (stages 1 and 2 of 3 built, not yet shipped)
 
 ---
 
