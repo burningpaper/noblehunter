@@ -2627,15 +2627,27 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 8: Ship stage 1 (ask Jarred first)**
 
-Ask Jarred for the go-ahead to migrate Neon and push. Then, in order:
+**Warning: stage 1 does not restrict pages by artist yet.** Profiles, the digest and verdicts
+are all unfiltered until stage 2 ships. Any member added on the People page can see and edit
+every artist's work, not just their own. Do not add a non-admin member until stage 2 has
+shipped. Until then, only admins should be given access.
 
-```bash
-uv run alembic upgrade head                      # Neon: 0005 -> 0006
-uv run alembic current                           # expect 0006 (head)
-uv run python -m pipeline.cli db grant           # grants for users, artists, artist_members
-git push
-scripts/install-worker.sh install                # restart the runner on the new code
-```
+Ask Jarred for the go-ahead to migrate Neon and push. Then, run this from the **main
+checkout**, not this worktree: a push from a feature branch has no upstream and at best
+creates a Vercel preview, and the runner must be installed from the checkout that stays in
+place, not one that can later be removed:
+
+1. Confirm no pipeline run is in progress, and that it's well away from 02:00.
+2. On `main`: `git merge --ff-only feature/artists-and-access`. Don't push yet.
+3. `uv run alembic upgrade head`, then `uv run alembic current` (expect `0006`, head).
+4. `uv run python -m pipeline.cli db grant` (grants for users, artists, artist_members).
+5. `git push origin main`, then wait for Vercel's production deploy to finish.
+6. `scripts/install-worker.sh install`, from the main checkout, to restart the runner on the new code.
+7. Smoke test `/profiles`, `/people`, and signing in.
+
+Between steps 3 and 5, the schema already requires `profiles.artist_id NOT NULL` but the old
+code on Vercel hasn't deployed yet and doesn't send it. Don't create a profile or run
+`profile import` during that window, or the insert will fail.
 
 After Vercel deploys, sign in at noblehunter.vercel.app and check:
 - `/profiles` still lists Synman's profiles.

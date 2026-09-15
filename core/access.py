@@ -1,10 +1,17 @@
-"""Who can see what. The one place that decides.
+"""Who can see what. The one place meant to decide it.
 
-People see their own artists' profiles and digests (and later their mail); admins, everyone
-in ALLOWED_EMAILS, see everything. Every web route asks this module instead of filtering on
-its own, and tests/test_web_access.py walks every route to check none forgot. Anything a
-viewer can't see is reported exactly like something that doesn't exist, so nobody can learn
-what another artist has.
+The design: people see only their own artists' profiles and digests (and later their mail);
+admins, everyone in ALLOWED_EMAILS, see everything. Anything a viewer can't see should be
+reported exactly like something that doesn't exist, so nobody can learn what another artist
+has.
+
+Stage 1 (this module, today) only gets partway there. Every web route requires a Viewer to
+sign in, and admin-only actions (the People page, Run now, the Claude budget) check
+require_admin. But visible_to, require_profile and require_outreach aren't wired into any
+route yet, so profiles, the digest and verdicts are still unfiltered: a signed-in member can
+see and edit every artist's work, not just their own. Until stage 2 wires filtering into
+every route and tests/test_web_access.py walks all of them to check none forgot, only admins
+should be given access.
 
 Access is worked out afresh on every request (see web/access.py), so taking someone off an
 artist stops them on their next click, not when their session cookie expires.

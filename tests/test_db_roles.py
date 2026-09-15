@@ -70,6 +70,13 @@ class TestWebRole:
             can(roles, WEB, table, privilege) for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
         )
 
+    @pytest.mark.parametrize("sequence", ["users_id_seq", "artists_id_seq"])
+    def test_can_use_people_id_sequences(self, roles, sequence):
+        assert roles.scalar(
+            text("select has_sequence_privilege(:role, :sequence, 'USAGE')"),
+            {"role": WEB, "sequence": sequence},
+        )
+
     @pytest.mark.parametrize(
         "table, privilege",
         [
