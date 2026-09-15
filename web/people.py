@@ -4,10 +4,11 @@ Every form swaps the whole page content back in, so the lists always match the d
 an add, rename or removal. Problems come back as 422 with what was typed kept. Adding someone
 sends no email: Jarred tells them, and they sign in with that Google account.
 
-A permanent live region (`#people-notice`) sits outside the swapped content and is refreshed
-out of band on every POST, so a screen reader announces what happened even though the swap
-itself replaces `#people-content` wholesale. `web/static/js/people.js` moves keyboard focus
-there too, or to the first invalid field on a 422.
+`#people-notice` is a permanent element outside the swapped content, refreshed out of band
+(its contents only, so the node itself never changes) on every POST. `web/static/js/people.js`
+moves keyboard focus there after a successful action, or to the first invalid field on a 422 --
+a screen reader announces whatever it's focused on, so the notice is heard by being focused,
+not by being a live region.
 """
 
 from datetime import UTC, datetime

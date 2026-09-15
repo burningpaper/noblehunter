@@ -23,11 +23,16 @@ def post(client, path: str, data: dict | None = None):
     )
 
 
-def oob_notice(html: str) -> str:
-    """The text inside the out-of-band #people-notice element, or fail if it isn't there."""
-    match = re.search(r'<div id="people-notice"[^>]*hx-swap-oob="true"[^>]*>(.*?)</div>', html, re.S)
+def notice_element(html: str) -> re.Match:
+    """The whole #people-notice element (any attribute order), or fail if it isn't there."""
+    match = re.search(r'<div[^>]*\bid="people-notice"[^>]*>(.*?)</div>', html, re.S)
     assert match, html
-    return match.group(1).strip()
+    return match
+
+
+def oob_notice(html: str) -> str:
+    """The text inside the #people-notice element, which the People page focuses after a POST."""
+    return notice_element(html).group(1).strip()
 
 
 class TestPage:
@@ -111,6 +116,8 @@ class TestAddPerson:
         assert "Enter a valid email address" in response.text
         assert "Choose an artist or name a new one" in response.text
         assert 'value="not-an-email"' in response.text
+        assert '<p class="field__error" id="person-email-error" role="alert">' in response.text
+        assert '<p class="field__error" id="person-artist-error" role="alert">' in response.text
 
     def test_a_non_ascii_digit_artist_id_is_a_clean_422_not_a_crash(self, admin):
         response = post(admin, "/people/members", {"email": "nik@example.com", "artist_id": "²"})
@@ -122,6 +129,22 @@ class TestAddPerson:
         html = admin.get("/people", headers=HTML).text
 
         assert "Use the exact address of their Google account." in html
+
+    def test_a_taken_new_artist_name_invalidates_the_name_field_not_the_select(self, admin, session):
+        make_artist(session, "Taken")
+
+        response = post(
+            admin,
+            "/people/members",
+            {"email": "nik@example.com", "artist_id": "new", "new_artist_name": "Taken"},
+        )
+
+        assert response.status_code == 422
+        select_tag = re.search(r'<select[^>]*id="person-artist"[^>]*>', response.text).group(0)
+        new_artist_tag = re.search(r'<input[^>]*id="person-new-artist"[^>]*>', response.text).group(0)
+        assert "aria-invalid" not in select_tag
+        assert 'aria-invalid="true"' in new_artist_tag
+        assert "person-artist-error" in new_artist_tag
 
 
 class TestArtistActions:
@@ -143,6 +166,7 @@ class TestArtistActions:
         # Jinja autoescapes the apostrophe in "There's" to &#39;, so match the escaping-safe part.
         assert "already an artist called" in response.text
         assert 'value="taken"' in response.text
+        assert f'<p class="field__error" id="rename-{artist.id}-error" role="alert">' in response.text
 
     def test_renaming_a_missing_artist_is_404(self, admin):
         assert post(admin, "/people/artists/999999/rename", {"name": "X"}).status_code == 404
@@ -174,9 +198,9 @@ class TestArtistActions:
 
 
 class TestFocusAndAnnouncements:
-    """After a POST, htmx swaps #people-content and focus falls to <body>. A permanent live
-    region outside that swap, refreshed out of band, lets a screen reader announce what
-    happened; a small script moves keyboard focus there (or to the first invalid field)."""
+    """After a POST, htmx swaps #people-content and focus falls to <body>. A small script moves
+    keyboard focus to #people-notice (or to the first invalid field on a 422) instead, and a
+    screen reader announces whatever it's focused on -- #people-notice is not a live region."""
 
     def test_the_page_loads_a_static_script_for_focus_handling(self, admin):
         html = admin.get("/people", headers=HTML).text
@@ -200,6 +224,25 @@ class TestFocusAndAnnouncements:
 
         assert response.status_code == 422
         assert oob_notice(response.text) == ""
+
+    def test_the_notice_is_a_focus_target_not_a_live_region(self, admin, session):
+        artist = make_artist(session, "Synman")
+
+        response = post(admin, "/people/members", {"email": "nik@example.com", "artist_id": str(artist.id)})
+
+        tag = notice_element(response.text).group(0)
+        assert 'hx-swap-oob="innerHTML"' in tag
+        assert "aria-live" not in tag
+        assert 'role="status"' not in tag
+        assert 'tabindex="-1"' in tag
+
+    def test_remove_buttons_name_both_the_person_and_the_artist(self, admin, session):
+        artist = make_artist(session, "Synman")
+        make_member(session, artist, make_user(session, "nik@example.com"))
+
+        html = admin.get("/people", headers=HTML).text
+
+        assert "nik@example.com from Synman" in html
 
 
 class TestCsrf:

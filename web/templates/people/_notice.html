@@ -1,4 +1,6 @@
-{# A permanent live region, always present outside #people-content. On a full page load it's
-   empty and static; a POST response refreshes it with an out-of-band swap so a screen reader
-   announces the result even though the swap itself replaces #people-content wholesale. #}
-<div id="people-notice" class="people-notice notice" role="status" aria-live="polite" tabindex="-1"{% if oob %} hx-swap-oob="true"{% endif %}>{{ notice or "" }}</div>
+{# The focus target after a People action, not a live region: a screen reader announces
+   whatever receives keyboard focus, and web/static/js/people.js focuses this element after a
+   successful add, rename or removal (a 422 focuses the invalid field instead). The
+   out-of-band swap replaces only its contents (`innerHTML`), so this stays the same DOM node
+   across every swap -- a fresh node here would lose the focus a screen reader is tracking. #}
+<div id="people-notice" class="people-notice notice" tabindex="-1"{% if oob %} hx-swap-oob="innerHTML"{% endif %}>{{ notice or "" }}</div>

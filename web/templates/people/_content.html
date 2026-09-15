@@ -51,7 +51,7 @@
       {% endfor %}
     </ul>
     {% else %}
-    <div class="card empty-state rise">
+    <div class="card empty-state">
       <h3 class="empty-state__title">No artists yet</h3>
       <p class="empty-state__body">Add the first person and name their artist at the same time.</p>
     </div>
@@ -71,10 +71,11 @@
           <p class="field__hint" id="person-email-hint">Use the exact address of their Google account.</p>
           {% if errors.email %}<p class="field__error" id="person-email-error" role="alert">{{ errors.email }}</p>{% endif %}
         </div>
+        {% set existing_artist_chosen = form.artist_id and form.artist_id != "new" %}
         <div class="field">
           <label class="field__label" for="person-artist">Artist</label>
           <select class="input" id="person-artist" name="artist_id"
-                  {% if errors.artist %}aria-invalid="true" aria-describedby="person-artist-error"{% endif %}>
+                  {% if errors.artist and existing_artist_chosen %}aria-invalid="true" aria-describedby="person-artist-error"{% endif %}>
             <option value="new"{% if form.artist_id in ("", "new") %} selected{% endif %}>New artist…</option>
             {% for artist in artists %}
             <option value="{{ artist.id }}"{% if form.artist_id == artist.id | string %} selected{% endif %}>{{ artist.name }}</option>
@@ -85,8 +86,8 @@
           <label class="field__label" for="person-new-artist">New artist's name</label>
           <input class="input" id="person-new-artist" name="new_artist_name" value="{{ form.new_artist_name }}" maxlength="80"
                  autocomplete="off"
-                 aria-describedby="person-new-artist-hint{% if errors.artist %} person-artist-error{% endif %}"
-                 {% if errors.artist %}aria-invalid="true"{% endif %}>
+                 aria-describedby="person-new-artist-hint{% if errors.artist and not existing_artist_chosen %} person-artist-error{% endif %}"
+                 {% if errors.artist and not existing_artist_chosen %}aria-invalid="true"{% endif %}>
           <p class="field__hint" id="person-new-artist-hint">Only needed when you chose New artist.</p>
           {% if errors.artist %}<p class="field__error" id="person-artist-error" role="alert">{{ errors.artist }}</p>{% endif %}
         </div>

@@ -1510,8 +1510,8 @@ code {
   font-size: var(--text-xs);
 }
 
-/* Reuses .notice for its look; :empty hides it (and its margin) between actions, since it's
-   a permanent live region that starts and often ends with nothing to announce. */
+/* Reuses .notice for its look; :empty hides it (and its margin) when there's nothing to
+   announce -- on first load, and after a 422, where focus goes to the invalid field instead. */
 .people-notice:empty {
   display: none;
 }
