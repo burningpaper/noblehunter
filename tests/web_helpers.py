@@ -1,4 +1,4 @@
-"""Shared helpers for web tests: test settings, a fake Google, and signing in."""
+"""Shared helpers for web tests: test settings, a fake Google, signing in, and a fake suggester."""
 
 import re
 
@@ -75,3 +75,18 @@ def member_client(session, email: str = "member@example.com", **app_options) -> 
     client = app_client(session, google, **app_options)
     sign_in(client)
     return client
+
+
+class FakeSuggester:
+    """Stands in for Ask Claude: returns canned suggestions, or raises, and records every call."""
+
+    def __init__(self, suggestions=(), error: Exception | None = None):
+        self.suggestions = list(suggestions)
+        self.error = error
+        self.calls: list[tuple] = []
+
+    def suggest(self, section, prompt, context):
+        self.calls.append((section, prompt, context))
+        if self.error:
+            raise self.error
+        return list(self.suggestions)

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from core.access import MAX_POSTGRES_INT
+from core.access import is_storable_id
 from core.models import Artist, User
 from core.people import PeopleValidationError, add_member, list_artists, remove_member, rename_artist
 from web.access import AdminViewer
@@ -90,7 +90,7 @@ def rename(
 
 @router.post("/artists/{artist_id}/members/{user_id}/remove")
 def remove(request: Request, artist_id: int, user_id: int, db: DbSession, viewer: AdminViewer) -> Response:
-    if not (0 < artist_id <= MAX_POSTGRES_INT and 0 < user_id <= MAX_POSTGRES_INT):
+    if not (is_storable_id(artist_id) and is_storable_id(user_id)):
         raise HTTPException(status_code=404)
     artist, user = db.get(Artist, artist_id), db.get(User, user_id)
     if artist is None or user is None:

@@ -9,22 +9,9 @@ from core.profile_contents import add_reference_artist
 from core.profiles import create_profile
 from core.suggestions import Suggestion, SuggestionError
 from tests.factories import default_artist_id
-from tests.web_helpers import FakeGoogle, csrf_token, sign_in, web_settings
+from tests.web_helpers import FakeGoogle, FakeSuggester, csrf_token, sign_in, web_settings
 from web.app import create_app
 from web.db import get_db
-
-
-class FakeSuggester:
-    def __init__(self, suggestions=(), error: Exception | None = None):
-        self.suggestions = list(suggestions)
-        self.error = error
-        self.calls: list[tuple] = []
-
-    def suggest(self, section, prompt, context):
-        self.calls.append((section, prompt, context))
-        if self.error:
-            raise self.error
-        return list(self.suggestions)
 
 
 @pytest.fixture

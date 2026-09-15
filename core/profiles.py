@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, contains_eager, selectinload
 
-from core.access import MAX_POSTGRES_INT, Viewer, visible_to
+from core.access import Viewer, is_storable_id, visible_to
 from core.models import Artist, Profile, SearchTermStatus
 from core.profile_rules import (
     DEFAULT_DIGEST_TARGET,
@@ -54,7 +54,7 @@ class ProfileSummary:
 
 
 def get_profile(session: Session, profile_id: int) -> Profile:
-    if not 0 < profile_id <= MAX_POSTGRES_INT:
+    if not is_storable_id(profile_id):
         raise LookupError(f"Profile {profile_id} not found")
     profile = session.get(Profile, profile_id)
     if profile is None:
@@ -65,7 +65,7 @@ def get_profile(session: Session, profile_id: int) -> Profile:
 def create_profile(
     session: Session, artist_id: int, name: str, digest_target: int | str = DEFAULT_DIGEST_TARGET
 ) -> Profile:
-    if not 0 < artist_id <= MAX_POSTGRES_INT or session.get(Artist, artist_id) is None:
+    if not is_storable_id(artist_id) or session.get(Artist, artist_id) is None:
         raise ProfileValidationError({"artist_id": "Choose which artist this profile is for"})
     clean_name, target, _ = _validated_settings(session, artist_id, name, digest_target, profile_id=None)
     profile = Profile(artist_id=artist_id, name=clean_name, digest_target=target)

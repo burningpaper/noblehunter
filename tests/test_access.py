@@ -7,8 +7,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import SAWarning
 
 from core.access import (
+    MAX_POSTGRES_INT,
     AdminOnly,
     NotVisible,
+    is_storable_id,
     record_sign_in,
     require_admin,
     require_outreach,
@@ -242,3 +244,13 @@ class TestRequire:
 
         with pytest.raises(AdminOnly):
             require_admin(member_viewer(make_artist(session)))
+
+
+class TestIsStorableId:
+    @pytest.mark.parametrize("value", [1, MAX_POSTGRES_INT])
+    def test_in_range_values_are_storable(self, value):
+        assert is_storable_id(value) is True
+
+    @pytest.mark.parametrize("value", [0, MAX_POSTGRES_INT + 1])
+    def test_zero_and_too_large_are_not_storable(self, value):
+        assert is_storable_id(value) is False

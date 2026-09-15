@@ -53,6 +53,11 @@ MAX_POSTGRES_INT = 2**31 - 1
 MAX_NAME_LENGTH = 200
 
 
+def is_storable_id(value: int) -> bool:
+    """Whether `value` could be a real row's id: positive and within Postgres's `integer` range."""
+    return 0 < value <= MAX_POSTGRES_INT
+
+
 def _clean_email(email: str) -> str | None:
     """A stripped, lowercased email, or None for empty or non-ASCII input.
 
@@ -118,7 +123,7 @@ def visible_to(viewer: Viewer, artist_column: ColumnElement[int]) -> ColumnEleme
 
 
 def require_profile(session: Session, viewer: Viewer, profile_id: int) -> Profile:
-    if not 0 < profile_id <= MAX_POSTGRES_INT:
+    if not is_storable_id(profile_id):
         raise NotVisible(f"Profile {profile_id} not found")
     profile = session.get(Profile, profile_id)
     if profile is None or not viewer.can_see_artist(profile.artist_id):
@@ -127,7 +132,7 @@ def require_profile(session: Session, viewer: Viewer, profile_id: int) -> Profil
 
 
 def require_outreach(session: Session, viewer: Viewer, outreach_id: int) -> Outreach:
-    if not 0 < outreach_id <= MAX_POSTGRES_INT:
+    if not is_storable_id(outreach_id):
         raise NotVisible(f"Outreach {outreach_id} not found")
     outreach = session.get(Outreach, outreach_id)
     if outreach is None or not viewer.can_see_artist(outreach.profile.artist_id):

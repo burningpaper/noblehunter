@@ -13,7 +13,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from core.access import MAX_POSTGRES_INT
+from core.access import is_storable_id
 from core.models import Artist, ArtistMember, Profile, User
 
 EMAIL_PATTERN = re.compile(r"^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
@@ -72,7 +72,7 @@ def create_artist(session: Session, name: str) -> Artist:
 
 
 def rename_artist(session: Session, artist_id: int, name: str) -> Artist:
-    if not 0 < artist_id <= MAX_POSTGRES_INT:
+    if not is_storable_id(artist_id):
         raise LookupError(f"Artist {artist_id} not found")
     artist = session.get(Artist, artist_id)
     if artist is None:
@@ -96,8 +96,7 @@ def add_member(
 
     artist = None
     if artist_id is not None:
-        if 0 < artist_id <= MAX_POSTGRES_INT:
-            artist = session.get(Artist, artist_id)
+        artist = session.get(Artist, artist_id) if is_storable_id(artist_id) else None
         if artist is None:
             errors["artist"] = "That artist no longer exists"
     elif not " ".join(new_artist_name.split()):
@@ -127,7 +126,7 @@ def add_member(
 
 def remove_member(session: Session, artist_id: int, user_id: int) -> None:
     """Take someone off an artist. Their user row stays, so history still says who they were."""
-    if not (0 < artist_id <= MAX_POSTGRES_INT and 0 < user_id <= MAX_POSTGRES_INT):
+    if not (is_storable_id(artist_id) and is_storable_id(user_id)):
         raise LookupError(f"User {user_id} is not on artist {artist_id}")
     membership = session.get(ArtistMember, (artist_id, user_id))
     if membership is None:

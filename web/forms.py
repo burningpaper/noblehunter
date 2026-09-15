@@ -1,6 +1,6 @@
 """Small shared helpers for reading posted form fields."""
 
-from core.access import MAX_POSTGRES_INT
+from core.access import is_storable_id
 
 
 def form_id(raw: str) -> int:
@@ -13,4 +13,4 @@ def form_id(raw: str) -> int:
     if not (text.isascii() and text.isdigit()):
         return 0
     value = int(text)
-    return value if value <= MAX_POSTGRES_INT else 0
+    return value if is_storable_id(value) else 0
