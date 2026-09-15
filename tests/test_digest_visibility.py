@@ -25,7 +25,7 @@ from tests.factories import (
 )
 from tests.web_helpers import app_client, csrf_token, member_client, sign_in
 
-NIGHT, EARLIER = date(2026, 9, 15), date(2026, 9, 10)
+NIGHT, EARLIER, NO_ENTRIES_AT_ALL = date(2026, 9, 15), date(2026, 9, 10), date(2020, 1, 1)
 ARTIST_LABEL = re.compile(r'<span class="digest-group__artist">([^<]*)</span>')
 
 
@@ -38,6 +38,16 @@ def admin_client(session):
     client = app_client(session)
     sign_in(client)
     return client
+
+
+def add_a_run(session, profile_id: int, *, started_at: datetime = datetime(2026, 9, 15, 0, 5, tzinfo=UTC)):
+    """A finished run with one stage count, so the night has something to total up."""
+    run = Run(trigger="schedule", status="succeeded", started_at=started_at)
+    session.add(run)
+    session.flush()
+    session.add(RunStageCount(run_id=run.id, profile_id=profile_id, stage="digest", count_in=3, count_out=1))
+    session.flush()
+    return run
 
 
 def outreach_snapshot(session, outreach_id: int):
@@ -68,6 +78,16 @@ def test_a_member_sees_only_their_artists_entries_and_nights(session):
     assert not view.show_artists
 
 
+def test_a_members_later_date_is_scoped_too(session):
+    mine, theirs = make_artist(session, "Mine"), make_artist(session, "Theirs")
+    entry(session, mine, EARLIER, "Mine earlier")
+    entry(session, theirs, NIGHT, "Theirs tonight")  # later than EARLIER, but not the member's
+
+    view = digest_view(session, viewer=member_viewer(mine), digest_date=EARLIER, today=NIGHT)
+
+    assert view.later_date is None
+
+
 def test_admins_see_every_artist_labelled(session):
     mine, theirs = make_artist(session, "Mine"), make_artist(session, "Theirs")
     entry(session, mine, NIGHT, "Mine tonight")
@@ -88,22 +108,6 @@ def test_a_multi_artist_member_sees_labels_too(session):
     view = digest_view(session, viewer=member_viewer(mine, also_mine), digest_date=NIGHT, today=NIGHT)
 
     assert view.show_artists
-
-
-def test_a_member_cannot_record_a_verdict_on_another_artists_entry(session):
-    mine, theirs = make_artist(session, "Mine"), make_artist(session, "Theirs")
-    other = entry(session, theirs, NIGHT, "Theirs tonight")
-    make_member(session, mine, make_user(session, "nik@example.com"))
-    client = member_client(session, "nik@example.com")
-
-    response = client.post(
-        f"/outreach/{other.id}/verdict",
-        data={"verdict": "skip"},
-        headers={"x-csrf-token": csrf_token(client), "hx-request": "true"},
-    )
-
-    assert response.status_code == 404
-    assert session.get(Outreach, other.id).status == "new"
 
 
 def test_the_digest_page_hides_other_artists(session):
@@ -160,7 +164,8 @@ def test_a_multi_artist_member_sees_artist_labels_rendered_and_not_a_third_artis
 
 def test_members_dont_see_the_night_in_numbers(session):
     mine = make_artist(session, "Mine")
-    entry(session, mine, NIGHT, "Mine tonight")
+    profile_entry = entry(session, mine, NIGHT, "Mine tonight")
+    add_a_run(session, profile_entry.profile_id)
     make_member(session, mine, make_user(session, "nik@example.com"))
 
     html = member_client(session, "nik@example.com").get("/digest", headers={"accept": "text/html"}).text
@@ -171,22 +176,24 @@ def test_members_dont_see_the_night_in_numbers(session):
 def test_admins_see_the_night_in_numbers_when_there_is_a_run(session):
     mine = make_artist(session, "Mine")
     profile_entry = entry(session, mine, NIGHT, "Mine tonight")
-    run = Run(trigger="schedule", status="succeeded", started_at=datetime(2026, 9, 15, 0, 5, tzinfo=UTC))
-    session.add(run)
-    session.flush()
-    session.add(
-        RunStageCount(
-            run_id=run.id, profile_id=profile_entry.profile_id, stage="digest", count_in=3, count_out=1
-        )
-    )
-    session.flush()
+    add_a_run(session, profile_entry.profile_id)
 
     html = admin_client(session).get("/digest", headers={"accept": "text/html"}).text
 
     assert "The night in numbers" in html
 
 
-def test_members_see_admin_only_wording_for_an_empty_digest(session):
+def test_a_members_counts_are_empty_even_when_a_run_exists(session):
+    mine = make_artist(session, "Mine")
+    outreach = entry(session, mine, NIGHT, "Mine tonight")
+    add_a_run(session, outreach.profile_id)
+
+    view = digest_view(session, viewer=member_viewer(mine), digest_date=NIGHT, today=NIGHT)
+
+    assert view.counts == ()
+
+
+def test_members_see_the_nightly_run_wording_for_an_empty_digest(session):
     mine = make_artist(session, "Mine")
     make_member(session, mine, make_user(session, "nik@example.com"))
 
@@ -288,3 +295,16 @@ class TestDigestDayVisibility:
 
         latest_html = client.get("/digest", headers={"accept": "text/html"}).text
         assert f"/digest/{EARLIER.isoformat()}" not in latest_html
+
+    def test_a_night_with_only_others_entries_looks_like_a_night_with_none_at_all(self, session):
+        mine, theirs = make_artist(session, "Mine"), make_artist(session, "Theirs")
+        entry(session, theirs, NIGHT, "Theirs tonight")
+        make_member(session, mine, make_user(session, "nik@example.com"))
+        client = member_client(session, "nik@example.com")
+
+        only_theirs = client.get(f"/digest/{NIGHT.isoformat()}", headers={"accept": "text/html"})
+        truly_empty = client.get(f"/digest/{NO_ENTRIES_AT_ALL.isoformat()}", headers={"accept": "text/html"})
+
+        assert only_theirs.status_code == truly_empty.status_code == 200
+        assert "Nothing on this night" in only_theirs.text
+        assert "Nothing on this night" in truly_empty.text

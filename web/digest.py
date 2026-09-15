@@ -1,9 +1,12 @@
-"""The digest page: the night's curators to pitch, and one click to record what Jarred did with each.
+"""The digest page: the viewer's own night's curators to pitch, one click to record each verdict.
 
-A verdict goes through `core.exclusion.record_verdict`, so its effects are the same wherever it's
-recorded. `pitched` and `skip` let the curator come back after 90 days; `bad-fit` and `dead` keep
-them out for good. The entry swaps itself back in with its new status, so working down the
-list never reloads the page.
+Every route here takes the signed-in viewer and only ever shows or changes entries on the
+viewer's own artists; `require_outreach` refuses anything else as not found, before a verdict's
+own validation runs. A verdict goes through `core.exclusion.record_verdict`, so its effects are
+the same wherever it's recorded. `pitched` and `skip` let the curator come back after 90 days;
+`bad-fit` and `dead` exclude the curator everywhere, for every artist, not just the one that
+recorded the verdict, until stage 3 (Task 13/14) makes exclusion per artist. The entry swaps
+itself back in with its new status, so working down the list never reloads the page.
 """
 
 from datetime import UTC, date, datetime

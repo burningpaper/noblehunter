@@ -9,6 +9,10 @@ The rules (Jarred, 2026-09-13):
 
 The 90-day curator rule is also enforced by an EXCLUDE constraint on `outreach`, so even
 a bug here can't put the same curator in two digests inside the window.
+
+These rules are still app-wide: the 90-day window and a bad-fit or dead verdict apply across
+every artist, not just the one that recorded it, until stage 3 (Task 13/14) makes curators
+per artist.
 """
 
 from collections.abc import Iterable

@@ -51,7 +51,7 @@
   {% for group in view.profiles %}
   <section class="digest-group" aria-labelledby="digest-group-{{ loop.index }}">
     <h2 class="digest-group__title" id="digest-group-{{ loop.index }}">
-      {% if view.show_artists %}<span class="digest-group__artist">{{ group.artist_name }}</span>{% endif %}
+      {% if view.show_artists %}<span class="digest-group__artist">{{ group.artist_name }}</span><span class="visually-hidden">: </span>{% endif %}
       {{ group.profile_name }} <span class="digest-group__count">{{ group.entries | length }}</span>
     </h2>
     <ol class="digest-list" role="list">

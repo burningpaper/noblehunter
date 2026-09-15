@@ -6,14 +6,15 @@ page shows the latest by default and can step back through earlier nights. Entri
 order the pipeline ranked them in, grouped under their profile, and groups are keyed on the
 artist's id, not its name, because names are unique only case-sensitively.
 
-Every query here is scoped to the viewer with `visible_to`: a member sees only their own
-artists' entries and nights, and never learns whether another artist even has a digest. Admins
-see everything, and `show_artists` tells the template to label each group so it's clear whose
-profile it is.
+Every query that lists digest entries and nights is scoped to the viewer with `visible_to`: a
+member sees only their own artists' entries and nights, and never learns whether another artist
+even has a digest. Admins see everything, and `show_artists` tells the template to label each
+group so it's clear whose profile it is.
 
-The counts come from the run that produced that night's digest: the latest run that started
-within that date (with a margin for the Mac's time zone). They total every artist's pipeline
-activity, so the page shows them to admins only.
+The night's counts are different: they total every artist's pipeline activity, not just the
+viewer's own, so `digest_view` computes them for admins only (the template's `is_admin` check
+is a second guard, not the only one). They come from the run that produced that night's digest:
+the latest run that started within that date (with a margin for the Mac's time zone).
 """
 
 from dataclasses import dataclass
@@ -116,7 +117,7 @@ def digest_view(session: Session, digest_date: date | None, *, today: date, view
     return DigestView(
         digest_date=chosen,
         profiles=_profiles(session, chosen, today, viewer),
-        counts=_counts(session, chosen),
+        counts=_counts(session, chosen) if viewer.is_admin else (),
         earlier_date=next((day for day in dates if day < chosen), None),
         later_date=next((day for day in reversed(dates) if day > chosen), None),
         show_artists=show_artists,
