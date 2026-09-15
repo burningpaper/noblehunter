@@ -5,8 +5,8 @@ admins, everyone in ALLOWED_EMAILS, see everything. Anything a viewer can't see 
 reported exactly like something that doesn't exist, so nobody can learn what another artist
 has.
 
-Stage 1 (this module, today) only gets partway there. Every web route requires a Viewer to
-sign in, and admin-only actions (the People page, Run now, the Claude budget) check
+Stage 1 (this module, today) only gets partway there. Every page and action except sign-in
+requires a Viewer, and admin-only actions (the People page, Run now, the Claude budget) check
 require_admin. But visible_to, require_profile and require_outreach aren't wired into any
 route yet, so profiles, the digest and verdicts are still unfiltered: a signed-in member can
 see and edit every artist's work, not just their own. Until stage 2 wires filtering into

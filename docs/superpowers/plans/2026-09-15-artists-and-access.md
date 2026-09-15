@@ -56,9 +56,11 @@
 | `tests/factories.py`, `tests/web_helpers.py`, `tests/migration_helpers.py` | modify / create | Artists, users, viewers, signing in as someone, migrating to a revision |
 
 Stages match the spec:
-- **Stage 1** (Tasks 1–8) ships people and access without changing what Jarred sees.
-- **Stage 2** (Tasks 9–12) restricts every route.
-- **Stage 3** (Tasks 13–17) makes curators per artist.
+- **Stage 1** (Tasks 1-8) ships people and access without changing what Jarred sees.
+- **Stage 2** (Tasks 9-12) restricts every route. Jarred (2026-09-15): stages 1 and 2 ship
+  together, at the end of Task 12, so no one sees an in-between state where people and access
+  exist but routes aren't scoped yet.
+- **Stage 3** (Tasks 13-17) makes curators per artist, and ships separately.
 
 ---
 
@@ -2627,35 +2629,11 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 8: Ship stage 1 (ask Jarred first)**
 
+Deferred (Jarred, 2026-09-15): stages 1 and 2 ship together. See Task 12 Step 7.
+
 **Warning: stage 1 does not restrict pages by artist yet.** Profiles, the digest and verdicts
 are all unfiltered until stage 2 ships. Any member added on the People page can see and edit
-every artist's work, not just their own. Do not add a non-admin member until stage 2 has
-shipped. Until then, only admins should be given access.
-
-Ask Jarred for the go-ahead to migrate Neon and push. Then, run this from the **main
-checkout**, not this worktree: a push from a feature branch has no upstream and at best
-creates a Vercel preview, and the runner must be installed from the checkout that stays in
-place, not one that can later be removed:
-
-1. Confirm no pipeline run is in progress, and that it's well away from 02:00.
-2. On `main`: `git merge --ff-only feature/artists-and-access`. Don't push yet.
-3. `uv run alembic upgrade head`, then `uv run alembic current` (expect `0006`, head).
-4. `uv run python -m pipeline.cli db grant` (grants for users, artists, artist_members).
-5. `git push origin main`, then wait for Vercel's production deploy to finish.
-6. `scripts/install-worker.sh install`, from the main checkout, to restart the runner on the new code.
-7. Smoke test `/profiles`, `/people`, and signing in.
-
-Between steps 3 and 5, the schema already requires `profiles.artist_id NOT NULL` but the old
-code on Vercel hasn't deployed yet and doesn't send it. Don't create a profile or run
-`profile import` during that window, or the insert will fail.
-
-After Vercel deploys, sign in at noblehunter.vercel.app and check:
-- `/profiles` still lists Synman's profiles.
-- `/people` shows the Synman artist with no members.
-
-Unless he says otherwise, add Jarred to Synman as a member there, so his own view stays correct if he's ever removed as an admin.
-
-Before Jarred invites anyone, remind him to set the Google Cloud project's OAuth publishing status to **In production**. Otherwise every invitee must first be added as a Google test user. Sign-in only asks for email and profile, so there's no warning screen.
+every artist's work, not just their own. Do not add a non-admin member before then.
 
 ---
 
@@ -3833,12 +3811,35 @@ The walk calls every route with the other artist's ids and fails on any new, unl
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 7: Ship stage 2 (ask Jarred first)**
+- [ ] **Step 7: Ship stages 1 and 2 together (ask Jarred first)**
 
-Stage 2 has no migration. With Jarred's go-ahead, run `git push`, and restart the runner with `scripts/install-worker.sh install`.
+Run every step below from the **main checkout**, not this worktree.
 
-After Vercel deploys, check signed in as Jarred:
-- `/profiles` and `/digest` look as before, with artist headings, because he's an admin.
+0. Pre-checks:
+   - no pipeline run is in progress, and it's well away from 02:00 (the nightly run starts then);
+   - Vercel's production branch is `main`;
+   - `uv run alembic current` reads `0005`.
+1. On `main`: `git merge --ff-only feature/artists-and-access`. Don't push yet.
+2. `uv run alembic upgrade head`, then `uv run alembic current` (expect `0006`).
+3. `uv run python -m pipeline.cli db grant`.
+4. `git push origin main`, then wait for Vercel's production deploy to finish. This also pushes the earlier commits already on `main`.
+5. `scripts/install-worker.sh install`, from the main checkout.
+6. Smoke test:
+   - `/profiles` and `/digest` look as before for Jarred (admin);
+   - `/people` works;
+   - signing in works;
+   - then ask Jarred for the People-page browser, keyboard and VoiceOver check.
+
+Window: between step 2 and the live deploy, the old Vercel app can't create a profile
+(`profiles.artist_id` is `NOT NULL` from step 2 on, but the old code doesn't send it). Don't
+create a profile in the web app until the deploy is live. It fails with a rolled-back 500 and
+no data damage.
+
+Rollback: if the deploy misbehaves, promote the previous Vercel deployment. Old code runs on
+the new schema except for creating profiles, so no downgrade is needed.
+
+After shipping: inviting members is safe once the Google OAuth app's publishing status is
+**In production**. Otherwise every invitee must first be added as a Google test user.
 
 ---
 
