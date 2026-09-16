@@ -1084,6 +1084,48 @@ def test_an_expired_history_id_is_its_own_kind():
     assert error.value.kind == "history-gone"
 
 
+def test_an_answer_that_is_not_json_is_rejected_rather_than_crashing():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == ACCESS_TOKEN_URL:
+            return token_response()
+        return httpx.Response(200, text="<html>a captive portal</html>")
+
+    with pytest.raises(GmailError) as error:
+        gmail(handler).profile()
+
+    assert error.value.kind == "rejected"
+
+
+def test_a_send_that_names_no_message_is_rejected_rather_than_crashing():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == ACCESS_TOKEN_URL:
+            return token_response()
+        return httpx.Response(200, json={"nothing": "useful"})
+
+    with pytest.raises(GmailError) as error:
+        gmail(handler).send("cmF3")
+
+    assert error.value.kind == "rejected"
+
+
+def test_a_refused_access_token_is_not_presented_again():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if str(request.url) == ACCESS_TOKEN_URL:
+            return token_response()
+        return httpx.Response(401, json={"error": {"message": "nope"}})
+
+    api = gmail(handler)
+    for _ in range(2):
+        with pytest.raises(GmailError):
+            api.profile()
+
+    # Two refreshes, not one: the refused token was dropped rather than offered again.
+    assert calls.count(ACCESS_TOKEN_URL) == 2
+
+
 def test_message_and_thread_ask_for_full_format():
     asked = []
 
@@ -1184,7 +1226,11 @@ class Gmail:
         if thread_id:
             body["threadId"] = thread_id
         data = self._post(f"{API_ROOT}/messages/send", body)
-        return str(data["id"]), str(data["threadId"])
+        try:
+            return str(data["id"]), str(data["threadId"])
+        except KeyError:
+            # Callers switch on `kind`; a surprise shape must not escape as a bare KeyError.
+            raise GmailError("rejected", "Gmail took the message but didn't say which one") from None
 
     def history_since(self, history_id: str) -> tuple[list[tuple[str, str]], str]:
         """Messages added since `history_id`, as (message id, thread id), and the new history id."""
@@ -1243,8 +1289,23 @@ class Gmail:
         except httpx.HTTPError as error:
             raise GmailError("transient", f"Couldn't reach Gmail ({type(error).__name__})") from None
         if response.status_code < 400:
-            return response.json()
-        raise GmailError(_kind(response, url), f"Gmail said {response.status_code} to {_what(url)}")
+            return _payload(response, url)
+        kind = _kind(response, url)
+        if kind == "auth":
+            # Google has refused the token we hold; don't keep presenting it until it expires.
+            self._token = None
+        raise GmailError(kind, f"Gmail said {response.status_code} to {_what(url)}")
+
+
+def _payload(response: httpx.Response, url: str) -> dict:
+    """Gmail's answer as a dict, or a `rejected` error -- never a raw ValueError past the kinds."""
+    try:
+        data = response.json()
+    except ValueError:
+        raise GmailError("rejected", f"Gmail's answer about {_what(url)} wasn't JSON") from None
+    if not isinstance(data, dict):
+        raise GmailError("rejected", f"Gmail's answer about {_what(url)} wasn't a message")
+    return data
 
 
 def _kind(response: httpx.Response, url: str) -> str:
@@ -1266,7 +1327,7 @@ def _what(url: str) -> str:
 
 Run: `uv run pytest tests/test_gmail.py -q`
 
-Expected: 13 passed. If `_what` makes an assertion fail, print the message in the failing test and adjust `_what`, not the error kinds.
+Expected: 16 passed. If `_what` makes an assertion fail, print the message in the failing test and adjust `_what`, not the error kinds.
 
 - [ ] **Step 5: Run the suite, lint and commit**
 
