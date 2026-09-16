@@ -2868,6 +2868,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 This is the third Claude caller in the codebase, after `core/suggestions.py` and `pipeline/fit_judge.py`. Follow their shape exactly: one structured-output call, thinking off, a `Protocol` so tests never touch the network, and a plain fallback when Claude can't help.
 
+The token-price helper it uses lives at `core/llm_costs.py`. It used to be `pipeline/llm_costs.py`, and was moved precisely so this module could use it: the web app instantiates `ClaudePitchWriter`, and nothing in `core/` or `web/` may import `pipeline/` — `tests/test_architecture.py` now fails if anything tries.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/test_pitch_writer.py`:
@@ -2876,6 +2878,7 @@ Create `tests/test_pitch_writer.py`:
 """Claude drafting a pitch email, and the plain draft used when it can't."""
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 
 import anthropic
@@ -2989,9 +2992,7 @@ class TestAsking:
     def test_revising_shows_claude_the_draft_it_is_changing(self):
         writer, messages = writer_with(json.dumps({"subject": "S", "body": "B"}))
 
-        writer.write(
-            PitchRequest(**{**REQUEST.__dict__, "previous_body": "Hi Nina, here's my track."})
-        )
+        writer.write(replace(REQUEST, previous_body="Hi Nina, here's my track."))
 
         question = messages.calls[0]["messages"][0]["content"]
         assert "here's my track" in question
@@ -3082,7 +3083,7 @@ from typing import Protocol
 
 import anthropic
 
-from pipeline.llm_costs import cost_of
+from core.llm_costs import cost_of
 
 logger = logging.getLogger("noble_hunter.pitch_writer")
 

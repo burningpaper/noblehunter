@@ -1,9 +1,14 @@
 """What a Claude call cost, worked out from its token usage.
 
+Both halves of Noble Hunter call Claude -- the web app for Ask Claude and pitch drafts, the
+pipeline for briefs, fit judgements and contact research -- so this lives in `core/`, which is
+what they share. It was `pipeline/llm_costs.py` until the pitch writer needed it, and the web
+app may not import `pipeline/` (see tests/test_architecture.py).
+
 Prices are US dollars per million tokens (input, output), as published in September 2026.
 Writing to the prompt cache costs 1.25× the input price and reading from it 0.1×. A model
-that isn't listed is priced like the most expensive one here, so a typo can only make the
-nightly budget stricter, never looser.
+that isn't listed is priced like the most expensive one here, so a typo can only overstate what
+a call cost, never understate it: the nightly budget stops sooner, never later.
 """
 
 from decimal import Decimal

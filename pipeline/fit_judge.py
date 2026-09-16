@@ -18,7 +18,7 @@ from typing import Protocol
 
 import anthropic
 
-from pipeline.llm_costs import cost_of
+from core.llm_costs import cost_of
 from pipeline.qualify import ProfileRules
 from pipeline.spotify import PlaylistData
 

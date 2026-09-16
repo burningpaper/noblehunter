@@ -14,7 +14,7 @@ import anthropic
 import httpx2
 import pytest
 
-from pipeline.llm_costs import cost_of
+from core.llm_costs import cost_of
 from pipeline.research import Budget, ClaimedContact, Evidence, Lead
 from pipeline.research_agent import DEFAULT_RESEARCH_MODEL, ClaudeResearchAgent, ResearchAgentError
 from pipeline.web import FetchError, Page, WebResult

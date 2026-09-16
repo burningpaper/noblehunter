@@ -19,8 +19,8 @@ from typing import Protocol
 
 import anthropic
 
+from core.llm_costs import cost_of
 from pipeline.contact_extract import extract_contacts
-from pipeline.llm_costs import cost_of
 from pipeline.research import AgentReport, Budget, ClaimedContact, Evidence, Lead, page_text
 from pipeline.web import FetchError, Page, WebResult, WebSearchError
 
