@@ -4687,8 +4687,8 @@ def _pitch_request(
         curator_name=outreach.curator.display_name,
         playlist_name=outreach.playlist.name,
         playlist_url=f"https://open.spotify.com/playlist/{outreach.playlist_id}",
-        brief=outreach.brief_text,
-        angle=outreach.suggested_angle,
+        brief=outreach.brief_text or "",
+        angle=outreach.suggested_angle,  # typed `str | None`, so this one may stay as it is
         reference_artists=tuple(artist.display_name for artist in profile.reference_artists),
         tracks=tracks,
         sender_name=viewer.email.split("@", 1)[0],
