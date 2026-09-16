@@ -66,6 +66,26 @@ Instagram stays manual. Meta's API only lets a business reply to someone who wro
 - **"Check now":** checks the viewer's mailboxes immediately.
 - **Read status:** opening a thread marks its replies read. Read status is shared by the artist's members.
 
+## How many pitches a night
+
+Jarred's limit isn't writing pitches, it's sustaining conversations (2026-09-16). Ten a day is ten new conversations a day, and replies stack up. So the digest stops working to a flat nightly number and works to a ceiling of open conversations instead.
+
+**The rule.**
+- **Open conversations, per profile, capped at 20** (`open_conversation_limit`, default 20).
+- **A conversation is open** when the entry has been pitched and either:
+  - the last message is theirs, so it's waiting on you; or
+  - the last message is yours and it's less than 14 days old (`quiet_after_days`, default 14), so it's waiting on them.
+- **It closes** when the entry is marked placed, skip, bad-fit or dead, or when your last message goes 14 days without an answer. The entry stays in history, marked "no reply"; only the count is freed.
+- **Tonight's allowance** is `min(digest_target, open_conversation_limit - open now)`. With 20 open and the limit at 20, the digest is empty and says why, rather than handing over leads that will go stale.
+- **Research obeys the same allowance,** so a night that can only take three new leads doesn't spend Claude researching ten.
+
+**Derived, not stored.** Open or closed comes from the entry's status and its messages (`max(sent_at)` per direction), in `core/conversations.py`. No status column to drift, and changing the ceiling or the quiet window takes effect that night.
+
+**Where it shows.**
+- **The digest page** says "12 of 20 conversations open" and, when the allowance is nil, explains that new leads resume when threads close.
+- **The Inbox** sorts by what's waiting on you first, then what's waiting on them.
+- **Both numbers are per-profile settings,** edited beside "Playlists per digest".
+
 ## How it works
 
 ### Units
@@ -87,7 +107,7 @@ Instagram stays manual. Meta's API only lets a business reply to someone who wro
 
 Gmail and Claude code live in `core/` because both the web app and the runner use them. The web app still never imports `pipeline/`. Every web route goes through `core/access.py` from the artists project, so someone who isn't on the artist gets 404.
 
-### Data (migration 0008; Artists and access uses 0006 and 0007)
+### Data (migration 0007; Artists and access stage 3 becomes 0008)
 
 - **`mail_accounts`** columns:
   - `id`
@@ -276,6 +296,7 @@ Starts after Artists and access is complete.
 2. **Compose and send.** Drafts, Claude writer, MIME, send, Pitched.
 3. **Replies arrive.** Per-mailbox sync, the runner thread, the thread panel, Replied, warnings.
 4. **Reply in-app and the Inbox.** Reply drafts, the Inbox page, unread counts, "Check now".
+5. **Conversation load.** `core/conversations.py`, the two per-profile settings, the digest and research allowance, the digest page's count, and the Inbox ordering.
 
 Each stage is pushed only after Neon is migrated.
 
