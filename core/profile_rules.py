@@ -13,6 +13,16 @@ MIN_DIGEST_TARGET = 1
 MAX_DIGEST_TARGET = 50
 DEFAULT_DIGEST_TARGET = 20
 
+# Conversation load (Jarred, 2026-09-16): sustaining conversations is the real limit, not writing
+# emails. A profile tops up to this many open conversations, and an unanswered pitch stops
+# counting after this many days. The bounds match migration 0007's check constraints.
+MIN_OPEN_CONVERSATIONS = 1
+MAX_OPEN_CONVERSATIONS = 200
+DEFAULT_OPEN_CONVERSATIONS = 20
+MIN_QUIET_AFTER_DAYS = 1
+MAX_QUIET_AFTER_DAYS = 365
+DEFAULT_QUIET_AFTER_DAYS = 14
+
 # Playlists with fewer followers than this aren't worth a pitch (0 means no floor).
 DEFAULT_MIN_FOLLOWERS = 50
 MAX_MIN_FOLLOWERS = 1_000_000

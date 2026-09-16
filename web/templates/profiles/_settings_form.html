@@ -27,6 +27,30 @@
     {% if errors.min_followers %}<p class="field__error" id="profile-min-followers-error">{{ errors.min_followers }}</p>{% endif %}
   </div>
 
+  <div class="field">
+    <label class="field__label" for="profile-open-conversations">Conversations at once</label>
+    <input class="input input--narrow" id="profile-open-conversations" name="open_conversation_limit"
+           type="number" inputmode="numeric" min="1" max="200" value="{{ form.open_conversation_limit }}"
+           aria-describedby="profile-open-conversations-hint{% if errors.open_conversation_limit %} profile-open-conversations-error{% endif %}"
+           {% if errors.open_conversation_limit %}aria-invalid="true"{% endif %}>
+    <p class="field__hint" id="profile-open-conversations-hint">
+      The digest tops up to this many open email conversations. Writing the emails is easy; keeping up with the replies isn't.
+    </p>
+    {% if errors.open_conversation_limit %}<p class="field__error" id="profile-open-conversations-error">{{ errors.open_conversation_limit }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label class="field__label" for="profile-quiet-days">Give up after</label>
+    <input class="input input--narrow" id="profile-quiet-days" name="quiet_after_days" type="number"
+           inputmode="numeric" min="1" max="365" value="{{ form.quiet_after_days }}"
+           aria-describedby="profile-quiet-days-hint{% if errors.quiet_after_days %} profile-quiet-days-error{% endif %}"
+           {% if errors.quiet_after_days %}aria-invalid="true"{% endif %}>
+    <p class="field__hint" id="profile-quiet-days-hint">
+      Days. A pitch nobody answered in this long stops taking up a slot. A conversation they replied to always counts.
+    </p>
+    {% if errors.quiet_after_days %}<p class="field__error" id="profile-quiet-days-error">{{ errors.quiet_after_days }}</p>{% endif %}
+  </div>
+
   <div class="form__actions">
     <button class="button button--primary" type="submit">
       Save

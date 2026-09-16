@@ -18,9 +18,13 @@ from core.profile_rules import (
     MAX_DIGEST_TARGET,
     MAX_MIN_FOLLOWERS,
     MAX_NAME_LENGTH,
+    MAX_OPEN_CONVERSATIONS,
+    MAX_QUIET_AFTER_DAYS,
     MIN_ACTIVE_SEARCH_TERMS,
     MIN_DIGEST_TARGET,
     MIN_GENRES,
+    MIN_OPEN_CONVERSATIONS,
+    MIN_QUIET_AFTER_DAYS,
     MIN_REFERENCE_ARTISTS,
     MIN_TRACKS,
 )
@@ -32,6 +36,17 @@ class ProfileValidationError(ValueError):
     def __init__(self, errors: dict[str, str]):
         self.errors = errors
         super().__init__("; ".join(f"{field}: {message}" for field, message in errors.items()))
+
+
+@dataclass(frozen=True)
+class ValidatedSettings:
+    """A profile's settings, checked. `None` means "leave what's there"."""
+
+    name: str
+    digest_target: int
+    min_followers: int | None = None
+    open_conversation_limit: int | None = None
+    quiet_after_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -67,8 +82,8 @@ def create_profile(
 ) -> Profile:
     if not is_storable_id(artist_id) or session.get(Artist, artist_id) is None:
         raise ProfileValidationError({"artist_id": "Choose which artist this profile is for"})
-    clean_name, target, _ = _validated_settings(session, artist_id, name, digest_target, profile_id=None)
-    profile = Profile(artist_id=artist_id, name=clean_name, digest_target=target)
+    settings = _validated_settings(session, artist_id, name, digest_target, profile_id=None)
+    profile = Profile(artist_id=artist_id, name=settings.name, digest_target=settings.digest_target)
     session.add(profile)
     session.flush()
     return profile
@@ -80,15 +95,26 @@ def update_profile_settings(
     name: str,
     digest_target: int | str,
     min_followers: int | str | None = None,
+    open_conversation_limit: int | str | None = None,
+    quiet_after_days: int | str | None = None,
 ) -> Profile:
-    """Rename and retune a profile. Leaving `min_followers` out keeps the current floor."""
+    """Rename and retune a profile. A setting left out keeps its current value."""
     profile = get_profile(session, profile_id)
-    clean_name, target, floor = _validated_settings(
-        session, profile.artist_id, name, digest_target, profile_id, min_followers
+    settings = _validated_settings(
+        session,
+        profile.artist_id,
+        name,
+        digest_target,
+        profile_id,
+        min_followers,
+        open_conversation_limit,
+        quiet_after_days,
     )
-    profile.name, profile.digest_target = clean_name, target
-    if floor is not None:
-        profile.min_followers = floor
+    profile.name, profile.digest_target = settings.name, settings.digest_target
+    for field in ("min_followers", "open_conversation_limit", "quiet_after_days"):
+        value = getattr(settings, field)
+        if value is not None:
+            setattr(profile, field, value)
     session.flush()
     return profile
 
@@ -177,7 +203,9 @@ def _validated_settings(
     digest_target: int | str,
     profile_id: int | None,
     min_followers: int | str | None = None,
-) -> tuple[str, int, int | None]:
+    open_conversation_limit: int | str | None = None,
+    quiet_after_days: int | str | None = None,
+) -> ValidatedSettings:
     errors: dict[str, str] = {}
     clean_name = " ".join(str(name).split())
     if not clean_name:
@@ -191,15 +219,48 @@ def _validated_settings(
     if target is None:
         errors["digest_target"] = f"Choose a whole number between {MIN_DIGEST_TARGET} and {MAX_DIGEST_TARGET}"
 
-    floor = None
-    if min_followers is not None:
-        floor = _parse_min_followers(min_followers)
-        if floor is None:
-            errors["min_followers"] = f"Choose a whole number of followers from 0 to {MAX_MIN_FOLLOWERS:,}"
+    floor = _optional(
+        min_followers,
+        0,
+        MAX_MIN_FOLLOWERS,
+        errors,
+        "min_followers",
+        f"Choose a whole number of followers from 0 to {MAX_MIN_FOLLOWERS:,}",
+    )
+    ceiling = _optional(
+        open_conversation_limit,
+        MIN_OPEN_CONVERSATIONS,
+        MAX_OPEN_CONVERSATIONS,
+        errors,
+        "open_conversation_limit",
+        f"Choose a whole number between {MIN_OPEN_CONVERSATIONS} and {MAX_OPEN_CONVERSATIONS}",
+    )
+    quiet = _optional(
+        quiet_after_days,
+        MIN_QUIET_AFTER_DAYS,
+        MAX_QUIET_AFTER_DAYS,
+        errors,
+        "quiet_after_days",
+        f"Choose a whole number of days between {MIN_QUIET_AFTER_DAYS} and {MAX_QUIET_AFTER_DAYS}",
+    )
 
     if errors:
         raise ProfileValidationError(errors)
-    return clean_name, target, floor
+    return ValidatedSettings(clean_name, target, floor, ceiling, quiet)
+
+
+def _optional(
+    value: int | str | None, lowest: int, highest: int, errors: dict[str, str], field: str, message: str
+) -> int | None:
+    """A setting the caller may leave out entirely; `None` in, `None` out, no error."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    number = int(text) if text.isdigit() else None
+    if number is None or not lowest <= number <= highest:
+        errors[field] = message
+        return None
+    return number
 
 
 def _parse_digest_target(value: int | str) -> int | None:
@@ -208,14 +269,6 @@ def _parse_digest_target(value: int | str) -> int | None:
         return None
     number = int(text)
     return number if MIN_DIGEST_TARGET <= number <= MAX_DIGEST_TARGET else None
-
-
-def _parse_min_followers(value: int | str) -> int | None:
-    text = str(value).strip()
-    if not text.isdigit():
-        return None
-    number = int(text)
-    return number if number <= MAX_MIN_FOLLOWERS else None
 
 
 def _name_taken(session: Session, artist_id: int, name: str, profile_id: int | None) -> bool:

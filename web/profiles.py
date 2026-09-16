@@ -101,14 +101,30 @@ def save_settings(
     name: FormText = "",
     digest_target: FormText = "",
     min_followers: FormText = "",
+    open_conversation_limit: FormText = "",
+    quiet_after_days: FormText = "",
 ) -> Response:
     profile = require_profile(db, viewer, profile_id)
     try:
-        # A blank floor (e.g. an older form) keeps the current value.
-        update_profile_settings(db, profile_id, name, digest_target, min_followers.strip() or None)
+        # A blank number (e.g. an older form) keeps the current value.
+        update_profile_settings(
+            db,
+            profile_id,
+            name,
+            digest_target,
+            min_followers.strip() or None,
+            open_conversation_limit.strip() or None,
+            quiet_after_days.strip() or None,
+        )
         db.commit()
     except ProfileValidationError as error:
-        typed = {"name": name, "digest_target": digest_target, "min_followers": min_followers}
+        typed = {
+            "name": name,
+            "digest_target": digest_target,
+            "min_followers": min_followers,
+            "open_conversation_limit": open_conversation_limit,
+            "quiet_after_days": quiet_after_days,
+        }
         context = {"profile": profile, "form": typed, "errors": error.errors, "saved": False}
         return templates.TemplateResponse(request, "profiles/_settings_form.html", context, 422)
     context = {"profile": profile, "form": _settings_form(profile), "errors": {}, "saved": True}
@@ -120,6 +136,8 @@ def _settings_form(profile: Profile) -> dict:
         "name": profile.name,
         "digest_target": profile.digest_target,
         "min_followers": profile.min_followers,
+        "open_conversation_limit": profile.open_conversation_limit,
+        "quiet_after_days": profile.quiet_after_days,
     }
 
 

@@ -77,7 +77,13 @@ WRITE_ROUTES = sorted(route for route in ROUTES if route[0] != "GET")
 # Valid forms, so a route that forgot its access check would actually do something.
 FORMS = {
     "/profiles": {"name": "Stolen", "digest_target": "10"},
-    "/profiles/{profile_id}/settings": {"name": "Renamed", "digest_target": "10", "min_followers": "0"},
+    "/profiles/{profile_id}/settings": {
+        "name": "Renamed",
+        "digest_target": "10",
+        "min_followers": "0",
+        "open_conversation_limit": "3",
+        "quiet_after_days": "3",
+    },
     "/profiles/{profile_id}/genres": {"tag": "Stolen"},
     "/profiles/{profile_id}/genres/{genre_id}/move": {"direction": "down"},
     "/profiles/{profile_id}/artists": {"name": "Stolen"},

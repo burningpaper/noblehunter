@@ -247,7 +247,14 @@ def their_data(session: Session, world: World) -> dict:
     curator = session.get(Curator, outreach.curator_id)
     pid = world.profile_id
     return {
-        "profile": (profile.name, profile.is_active, profile.digest_target, profile.min_followers),
+        "profile": (
+            profile.name,
+            profile.is_active,
+            profile.digest_target,
+            profile.min_followers,
+            profile.open_conversation_limit,
+            profile.quiet_after_days,
+        ),
         "their_profiles": sorted(
             session.scalars(select(Profile.name).where(Profile.artist_id == world.artist_id))
         ),

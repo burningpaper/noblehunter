@@ -181,6 +181,25 @@ class TestProfileDetail:
         assert response.status_code == 422
         assert "Give the profile a name" in response.text
 
+    def test_the_conversation_settings_save(self, client, session):
+        profile = create_profile(session, default_artist_id(session), "IDM Playlists")
+
+        response = htmx_post(
+            client,
+            f"/profiles/{profile.id}/settings",
+            {
+                "name": "IDM Playlists",
+                "digest_target": "10",
+                "min_followers": "50",
+                "open_conversation_limit": "12",
+                "quiet_after_days": "21",
+            },
+        )
+
+        assert response.status_code == 200
+        session.refresh(profile)
+        assert (profile.open_conversation_limit, profile.quiet_after_days) == (12, 21)
+
 
 class TestActivation:
     def test_activating_an_incomplete_profile_explains_what_is_missing(self, client, session):
