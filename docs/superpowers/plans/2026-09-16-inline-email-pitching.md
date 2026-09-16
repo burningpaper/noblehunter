@@ -7428,7 +7428,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `tests/test_profile_conversation_settings.py`
 - Modify: `core/profile_rules.py`, `core/profiles.py`, `web/profiles.py`, `web/templates/profiles/_settings_form.html`, `tests/route_walk.py`, `tests/access_world.py`, `tests/test_web_profiles.py`
 
-The migration gave every profile `open_conversation_limit` (20) and `quiet_after_days` (14). Now they become editable, through the same validated path as every other profile setting — so the YAML importer, the web form and any future caller can't disagree about what's allowed.
+The migration gave every profile `open_conversation_limit` (20) and `quiet_after_days` (14). Now they become editable, through the same validated path the web form already uses for every other profile setting, so the form and any future caller can't disagree about what's allowed.
+
+**One caveat, discovered while building this:** the YAML importer is *not* on that path. `core/profile_import.py` assigns `profile.digest_target` straight onto the model and never calls `_validated_settings`, so these two settings can't be set from YAML at all. That is tolerable — YAML is a bootstrap and backup tool, and Jarred edits settings in the web app — but don't describe the validator as the single funnel for every route into a profile, because it isn't one yet.
 
 `_validated_settings` currently returns a three-tuple, and two more settings would make it a five-tuple nobody can read at the call site. Replace it with a small frozen dataclass in the same commit: this is exactly the "a file you're modifying has grown unwieldy" case, and it stays a ten-line change.
 
@@ -7706,7 +7708,7 @@ In `web/templates/profiles/_settings_form.html`, after the minimum-followers fie
 
 - [ ] **Step 6: Let the access walk change them**
 
-In `tests/route_walk.py`, extend the settings form so a leaked write really moves these too:
+In `tests/route_walk.py`, extend the settings form so a leaked write really moves these too. It is currently one line (`{"name": "Renamed", "digest_target": "10", "min_followers": "0"}`) and becomes:
 
 ```python
     "/profiles/{profile_id}/settings": {
@@ -7718,7 +7720,7 @@ In `tests/route_walk.py`, extend the settings form so a leaked write really move
     },
 ```
 
-In `tests/access_world.py`, add them to the profile tuple in `their_data`:
+In `tests/access_world.py`, add them to the profile tuple in `their_data`. It is currently a single line (`"profile": (profile.name, profile.is_active, profile.digest_target, profile.min_followers),`); six entries won't fit in 110 columns, so it becomes:
 
 ```python
         "profile": (
@@ -7736,8 +7738,9 @@ In `tests/test_web_profiles.py`, add one page test beside the existing settings 
 ```python
 def test_the_conversation_settings_save(session):
     profile = make_profile(session, "IDM Playlists")
-    client = app_client(session)
-    sign_in(client)
+    # That file has no `app_client`: it wires create_app + get_db itself. Build the client the
+    # way the tests beside this one do rather than importing a helper that isn't there.
+    client = a_signed_in_client(session)
 
     response = client.post(
         f"/profiles/{profile.id}/settings",
@@ -7771,11 +7774,20 @@ uv run ruff check . && uv run ruff format .
 git add core/profile_rules.py core/profiles.py web/profiles.py web/templates/profiles/_settings_form.html tests
 git commit -m "feat: make the conversation ceiling and quiet window editable
 
-Through the same validated path as every other profile setting, so the importer and the web
-form can't disagree. The five-tuple of settings became a dataclass while it was small.
+Through the same validated path the web form uses for every other profile setting. The
+five-tuple of settings became a dataclass while it was small.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
+
+**Built 2026-09-16** — `b5ee16d` (code) and `6e9c16c` (log). Suite 1748 passed, 6 skipped, as forecast. The bounds were checked against migration 0007 and the `CheckConstraint`s in `core/models.py` rather than taken on trust from the constants above. Four deviations, all sound:
+
+- only four of the six constants are imported into `core/profiles.py` — importing the two unused `DEFAULT_*` ones is an F401 failure. Task 16 gives them a home;
+- the page test uses `tests/test_web_profiles.py`'s own `client` fixture and `htmx_post` helper, not the placeholder named in the snippet above;
+- `session.refresh(profile)` before asserting, as its neighbours do;
+- the comment `# A blank floor…` became `# A blank number…`, now that it governs three fields.
+
+The commit as shipped still carries the "importer" wording corrected at the top of this task; that caveat is the accurate account.
 
 ---
 
@@ -7951,6 +7963,19 @@ In `pipeline/research.py`, the same shape: build `allowances` from `loads_for(se
 
 Both modules now import `core.conversations`, which is deliberate: the digest, research and the page must agree about what "open" means, and there's one place that decides.
 
+**Also in this step, make two dead constants load-bearing.** Task 15 added `DEFAULT_OPEN_CONVERSATIONS = 20` and `DEFAULT_QUIET_AFTER_DAYS = 14` to `core/profile_rules.py`, and nothing imports either: `core/models.py` states the same two numbers again as `default=20` / `default=14` on lines 322–323. Two files holding one number is how they drift. Import the constants in `core/models.py` and use them:
+
+```python
+    open_conversation_limit: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_OPEN_CONVERSATIONS, server_default="20"
+    )
+    quiet_after_days: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_QUIET_AFTER_DAYS, server_default="14"
+    )
+```
+
+`core/profile_rules.py` imports nothing, so there's no cycle. Leave `server_default` as the literal string — that one belongs to migration 0007 and describes rows the database writes without Python. Leave `digest_target` and `min_followers` alone; their constants already have consumers, and rewiring them isn't this task's job.
+
 - [ ] **Step 4: Show it on the digest page**
 
 In `core/digest_view.py`, give `ProfileDigest` two more fields:
@@ -7960,7 +7985,22 @@ In `core/digest_view.py`, give `ProfileDigest` two more fields:
     conversation_limit: int = 0
 ```
 
-In `_profiles`, once the groups are built, look the loads up in one go (`loads_for(session, profiles_in_view, now=datetime.now(UTC))` — or pass `now` down from `digest_view` if you'd rather not read the clock in two places; prefer passing it) and set both fields per group.
+`digest_view` takes `today` but has no `now`, and nineteen call sites pass `today=` without one. Making `now` required would mean editing all nineteen to render a count in a heading, so give it a default instead:
+
+```python
+def digest_view(
+    session: Session,
+    digest_date: date | None,
+    *,
+    today: date,
+    viewer: Viewer,
+    now: datetime | None = None,
+) -> DigestView:
+```
+
+and pass `now or datetime.now(UTC)` down to `_profiles`, which hands it to `loads_for`. No existing caller changes, and a test that needs a fixed clock can supply one — which the test below does, deliberately.
+
+In `_profiles`, once the groups are built, look the loads up in one go and set both fields per group.
 
 In `web/templates/digest/page.html`, in the group heading, after the count:
 
@@ -7977,7 +8017,9 @@ def test_the_group_says_how_many_conversations_are_open(session):
     outreach, mailbox = an_entry(session)
     add_message(session, outreach, mailbox, MailDirection.OUT, SENT_AT, "m1")
 
-    group = digest_view(session, NIGHT, today=TODAY, viewer=admin_viewer()).profiles[0]
+    # `now=SENT_AT`, not the wall clock: the pitch is only open for `quiet_after_days` after it
+    # was sent, so against the real clock this test would start failing a fortnight from now.
+    group = digest_view(session, NIGHT, today=TODAY, viewer=admin_viewer(), now=SENT_AT).profiles[0]
 
     assert (group.open_conversations, group.conversation_limit) == (1, 20)
 ```
@@ -8002,6 +8044,16 @@ so a profile with no room tonight doesn't pay five cents a lead for leads it can
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
+**Built 2026-09-16** — `516b2b7` (code) and `8d29465` (log). Suite 1757 passed, 6 skipped, as forecast. Three files beyond the list above had to change, all justified:
+
+- **`tests/conversation_helpers.py` — a real bug in Task 14's helper.** `pitched` dated its outreach row `now.date()`, and in the digest suite `NOW.date() == TODAY`. So every "open conversation" a test built was *also* one of tonight's digest rows: `_entries_already_today` counted it as a lead already handed over and `entries_today` counted it again. The red this task predicted was real but arrived for the wrong reason — four stale rows plus the one lead the old gate allowed happened to make five. The entry is now dated from its oldest message, which is what a conversation is. `tests/test_conversations.py` passes unchanged.
+- **`tests/test_digest_view_mail.py`** — the fixed-query-count test moved 2 → 3, since `loads_for` adds one `email_messages` query to the page. The test's point is that the count doesn't grow per entry, so the number was updated and the comment says which third query arrived.
+- **`web/static/css/app.css`** — `.digest-group__load` inherited the `h2`'s size and outshouted the profile name; it gets the muted treatment beside `.digest-group__count`.
+
+Two things left deliberately: `_active_profiles` is now written twice, identically, in `pipeline/digest.py` and `pipeline/research.py`. Two lines each, so duplication is cheaper than coupling here — but a third caller should push it into `core/conversations.py`.
+
+And one arithmetic edge nobody designed, worth knowing before it surprises someone: if the digest runs **twice in one day** and entries from the first run are emailed in between, those entries count both in `taken` and in `open_now`, so the evening top-up is doubly conservative. It errs toward fewer leads, which is the safe direction.
+
 ---
 
 ### Task 17: Documentation, and shipping it
@@ -8021,19 +8073,11 @@ Environment variables live in `.env.example` only — there's no README table to
 
 - [ ] **Step 1: Check `.env.example` reads as one piece**
 
-Tasks 1 and 11 each added part of the mail section. Read the whole file and make sure it says, in one block, what these three are and who needs them:
+Tasks 1 and 11 each added part of the mail section, and as of Task 16 the file already reads as one piece: an `--- Email pitching (both the Mac Mini and Vercel) ---` block declaring `MAIL_TOKEN_KEY`, with the Google pair left where sign-in declares it and a line above it noting the Mac Mini needs them too, to refresh mail tokens.
 
-```bash
-# --- Pitching by email (migration 0007) ---------------------------------------------
-# The Google Cloud OAuth client, the same one sign-in uses. Both the web app (Vercel) and
-# the runner on the Mac Mini need all three: the web app sends, the runner reads replies.
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-# Encrypts the Gmail refresh tokens at rest. Generate one with:
-#   uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Losing it means every mailbox must be connected again; changing it does the same.
-MAIL_TOKEN_KEY=
-```
+**Do not move `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` into the mail block, or repeat them there.** They are one OAuth client used by two features, and a name declared twice in the same env file is a trap: copy the file wholesale and the second, empty declaration wins, so sign-in breaks in a way that looks nothing like its cause. Cross-reference, as the file already does.
+
+So this step is a read-through, not a rewrite. Check only that a stranger could answer three questions from the file alone: what `MAIL_TOKEN_KEY` is, that the *same* value must be set in both places, and that mail simply switches itself off when it's missing. Fix the wording if any of those is unclear; otherwise change nothing.
 
 Nothing else in this task touches secrets: Jarred puts the real values in `.env.local` and in Vercel himself.
 
@@ -8050,7 +8094,15 @@ Builders add a log entry as they finish each task, so by now there are several s
 
 - [ ] **Step 3: Update `IMPLEMENTATION_PLAN.md`**
 
-Add a stage for this work with its status, in the file's existing format, and note that migration 0007 is applied. Leave the Artists-and-access stage 3 entry alone: it's still not started, and it becomes migration 0008.
+The file's last entry is Stage 11 (Artists and access), so this work is **Stage 12**. Follow the shape every other stage uses — `## Stage 12: Pitching by email`, then `Goal:`, `Success Criteria:` and `Status:`, with ✅ / ⏳ bullets for what's done and what's outstanding.
+
+**Do not write that migration 0007 is applied.** When this task runs it exists only on the branch; applying it to Neon is step 7 of the checklist below, which happens *after* these documents are written. This is the file someone reads to find out whether the database is up to date, so a premature "applied" there is worse than no note at all. Write what is true at that moment:
+
+```
+Status: In Progress — built on `feature/email-pitching` (migration 0007 written, not yet applied to Neon).
+```
+
+and leave the ⏳ bullet for shipping. Leave the Artists-and-access stage 3 entry alone: it's still not started, and it becomes migration 0008.
 
 - [ ] **Step 4: Commit the documentation**
 
