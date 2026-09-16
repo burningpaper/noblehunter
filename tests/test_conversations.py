@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from core.conversations import conversation_load, loads_for, open_conversations
-from core.models import MailDirection
+from core.models import MailDirection, OutreachStatus
 from tests.conversation_helpers import pitched as _pitched
 from tests.factories import make_artist, make_mailbox, make_profile
 from tests.query_counting import record_statements
@@ -57,6 +57,28 @@ class TestWhatCounts:
     def test_an_entry_pitched_by_hand_is_not_a_conversation(self, session):
         profile = a_profile(session)
         pitched(session, profile, messages=[])  # marked pitched, but nothing was emailed
+
+        assert open_conversations(session, profile, now=NOW) == 0
+
+    def test_a_verdict_closes_it_even_though_they_spoke_last(self, session):
+        # "Not for us" is the likeliest reply to a cold pitch. Without this, marking the entry
+        # bad-fit leaves an inbound last message that never ages out, and the slot is held for
+        # ever -- enough of them and the ceiling silently starves the digest to nothing.
+        profile = a_profile(session)
+        outreach = pitched(session, profile, messages=[(MailDirection.OUT, 30), (MailDirection.IN, 29)])
+        assert open_conversations(session, profile, now=NOW) == 1
+
+        outreach.status = OutreachStatus.BAD_FIT
+        session.flush()
+
+        assert open_conversations(session, profile, now=NOW) == 0
+
+    def test_a_placed_track_is_finished_with_too(self, session):
+        profile = a_profile(session)
+        outreach = pitched(session, profile, messages=[(MailDirection.OUT, 1), (MailDirection.IN, 1)])
+
+        outreach.status = OutreachStatus.PLACED
+        session.flush()
 
         assert open_conversations(session, profile, now=NOW) == 0
 

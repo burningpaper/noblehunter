@@ -10,7 +10,9 @@ Two judgement calls, made here so the digest, research and the page all agree:
   reply, so it doesn't take up a slot;
 - a pitch nobody answered within `quiet_after_days` is over in practice and stops counting. A
   conversation where the curator spoke last never goes quiet -- it's waiting on you, however
-  long it sits there.
+  long it sits there -- *unless* the entry carries a verdict. "Not for us" followed by a
+  bad-fit would otherwise hold a slot for ever, and enough of those would quietly starve the
+  digest to nothing.
 
 Nothing here is stored: it's all derived from the messages, so a reply arriving overnight
 changes the answer without anything having to be updated in the right order.
@@ -23,7 +25,15 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.models import EmailMessage, MailDirection, Outreach, Profile
+from core.models import EmailMessage, MailDirection, Outreach, OutreachStatus, Profile
+
+# A verdict ends the conversation whoever spoke last. Without this, a curator's "not for us"
+# leaves an inbound last message that never ages out, so a finished exchange holds a slot for
+# ever -- and twenty of those turn a ceiling of twenty into an allowance of zero, permanently,
+# with nothing on screen to explain the empty digest.
+CLOSED_STATUSES = frozenset(
+    {OutreachStatus.SKIP, OutreachStatus.BAD_FIT, OutreachStatus.DEAD, OutreachStatus.PLACED}
+)
 
 
 @dataclass(frozen=True)
@@ -38,10 +48,6 @@ class ConversationLoad:
     def allowance(self) -> int:
         """How many new pitches tonight may hand over: room under the ceiling, capped by the target."""
         return max(0, min(self.target, self.limit - self.open_now))
-
-    @property
-    def full(self) -> bool:
-        return self.allowance == 0
 
 
 def open_conversations(session: Session, profile: Profile, *, now: datetime) -> int:
@@ -78,6 +84,7 @@ def _open_counts(session: Session, profile_ids: Sequence[int], *, now: datetime)
     rows = session.execute(
         select(
             Outreach.profile_id,
+            Outreach.status,
             Profile.quiet_after_days,
             EmailMessage.direction,
             EmailMessage.sent_at,
@@ -89,13 +96,15 @@ def _open_counts(session: Session, profile_ids: Sequence[int], *, now: datetime)
         .distinct(EmailMessage.outreach_id)
     )
     counts: dict[int, int] = {}
-    for profile_id, quiet_after_days, direction, sent_at in rows:
-        if _is_open(direction, sent_at, quiet_after_days, now):
+    for profile_id, status, quiet_after_days, direction, sent_at in rows:
+        if _is_open(status, direction, sent_at, quiet_after_days, now):
             counts[profile_id] = counts.get(profile_id, 0) + 1
     return counts
 
 
-def _is_open(direction: str, sent_at: datetime, quiet_after_days: int, now: datetime) -> bool:
+def _is_open(status: str, direction: str, sent_at: datetime, quiet_after_days: int, now: datetime) -> bool:
+    if status in CLOSED_STATUSES:
+        return False
     if direction == MailDirection.IN:
         return True  # they spoke last: waiting on you, however old
     return now - sent_at <= timedelta(days=quiet_after_days)
