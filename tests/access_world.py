@@ -67,10 +67,44 @@ THEIR_CURATOR_EMAIL = "nina@broken-machines.com"
 
 
 class _RefusingGmail:
-    """Any send reaching this in an access walk is a leak; fail loudly rather than over the network."""
+    """Reading is allowed and finds nothing; a send reaching this in a walk is a leak."""
+
+    def history_since(self, history_id: str):
+        return [], history_id
+
+    def profile(self):
+        return "walk@example.com", "1"
+
+    def message(self, message_id: str) -> dict:
+        raise AssertionError(f"An access walk fetched message {message_id}")
+
+    def thread(self, thread_id: str) -> dict:
+        return {"messages": []}
 
     def send(self, raw: str, *, thread_id: str | None = None):
         raise AssertionError("An access walk reached Gmail; a send leaked past require_outreach")
+
+
+class _ReadingGmailSender(FakeGmailSender):
+    """The admin's Gmail: sends are recorded, and reading the mailbox finds nothing new.
+
+    Both halves have to work, because the admin is the walk's positive control for both: a send
+    must land somewhere that remembers it, and "Check now" reads every mailbox they can see --
+    which for an admin is all of them. Reading still records that it happened (a fresh history
+    id, a check time), so the Inbox's own positive control has something to prove.
+    """
+
+    def history_since(self, history_id: str):
+        return [], "2000"
+
+    def profile(self):
+        return "admin@example.com", "2000"
+
+    def message(self, message_id: str) -> dict:
+        raise AssertionError(f"An access walk fetched message {message_id}")
+
+    def thread(self, thread_id: str) -> dict:
+        return {"messages": []}
 
 
 def world_settings():
@@ -161,7 +195,7 @@ def admin_client(session: Session, suggester: FakeSuggester | None = None) -> Te
     """Signed in as the admin. Sign in before taking a snapshot: signing in writes the user row."""
     # The admin is allowed to send, and the positive control needs the send to land somewhere --
     # on a fake that records it, never on Google.
-    sender = FakeGmailSender()
+    sender = _ReadingGmailSender()
     client = app_client(
         session,
         suggester=suggester or FakeSuggester(),
@@ -238,8 +272,16 @@ def their_data(session: Session, world: World) -> dict:
             for t in session.scalars(select(SearchTerm).where(SearchTerm.profile_id == pid))
         ),
         "profile_mailbox": profile.mail_account_id,
+        # `history_id` and `last_checked_at` are in because the Inbox's "Check now" moves them:
+        # an outsider's check must never read -- or record that it read -- another artist's mailbox.
         "mailboxes": sorted(
-            (box.address, box.refresh_token_encrypted is not None, box.needs_reconnect)
+            (
+                box.address,
+                box.refresh_token_encrypted is not None,
+                box.needs_reconnect,
+                box.history_id,
+                box.last_checked_at,
+            )
             for box in session.scalars(select(MailAccount).where(MailAccount.artist_id == world.artist_id))
         ),
         "outreach": (outreach.status, outreach.status_changed_at, outreach.pitched_at, outreach.notes),

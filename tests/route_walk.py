@@ -62,6 +62,8 @@ ROUTES = {
     ("POST", "/outreach/{outreach_id}/pitch/write"): NOT_FOUND,
     ("POST", "/outreach/{outreach_id}/pitch/save"): NOT_FOUND,
     ("POST", "/outreach/{outreach_id}/pitch/send"): NOT_FOUND,
+    ("GET", "/inbox"): OK,
+    ("POST", "/inbox/check"): OK,
     ("GET", "/runs/status"): OK,
     ("POST", "/runs/request"): FORBIDDEN,
     ("POST", "/settings/claude-budget"): FORBIDDEN,

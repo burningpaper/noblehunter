@@ -1,0 +1,45 @@
+{# The conversations themselves. Swapped on its own by Check now. #}
+<div id="inbox-list">
+  {% if inbox_notice %}<p class="notice" role="status">{{ inbox_notice }}</p>{% endif %}
+  {% if not view.conversations %}
+  <div class="card empty-state rise">
+    <h2 class="empty-state__title">No conversations yet</h2>
+    <p class="empty-state__body">Send a pitch from tonight's digest and it will appear here.</p>
+  </div>
+  {% else %}
+  <ol class="inbox-list" role="list">
+    {% for conversation in view.conversations %}
+    <li class="card inbox-item{% if conversation.waiting_on_you %} inbox-item--waiting{% endif %}">
+      <div class="inbox-item__header">
+        <h2 class="inbox-item__title">{{ conversation.curator_name }}</h2>
+        {# Whose turn it is comes first: a reply that just arrived is also unread, and "1 unread"
+           on its own buries the only thing worth spotting from across the list. #}
+        {% if conversation.waiting_on_you %}
+        <span class="tag tag--reply">Waiting on you{% if conversation.unread %} · {{ conversation.unread }} unread{% endif %}</span>
+        {% elif conversation.unread %}
+        <span class="tag tag--reply">{{ conversation.unread }} unread</span>
+        {% endif %}
+      </div>
+      <p class="inbox-item__meta">
+        {% if view.show_artists %}<span>{{ conversation.artist_name }}</span>{% endif %}
+        <span>{{ conversation.profile_name }}</span>
+        <span>{{ conversation.playlist_name }}</span>
+        <span>
+          {% if conversation.days_since_last == 0 %}today{% else %}{{ conversation.days_since_last }} {{ "day" if conversation.days_since_last == 1 else "days" }} ago{% endif %}
+        </span>
+      </p>
+      <p class="inbox-item__snippet">{{ conversation.last_snippet }}</p>
+      <details class="digest-entry__pitch">
+        <summary class="digest-entry__pitch-summary">
+          {% if conversation.waiting_on_you %}Read and reply{% else %}The conversation{% endif %}
+        </summary>
+        <div id="pitch-{{ conversation.outreach_id }}" hx-get="/outreach/{{ conversation.outreach_id }}/pitch"
+             hx-trigger="toggle once from:closest details" hx-swap="innerHTML">
+          <p class="field__hint">Loading…</p>
+        </div>
+      </details>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+</div>

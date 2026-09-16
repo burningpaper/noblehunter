@@ -1630,6 +1630,57 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* ---- Inbox --------------------------------------------------------------------------- */
+
+.inbox-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.inbox-item--waiting {
+  border-left: 3px solid var(--color-accent);
+}
+
+.inbox-item__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* The same size as a digest entry's title: the two lists are one nav click apart and shouldn't
+   disagree about how big a curator's name is. */
+.inbox-item__title {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.inbox-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin: var(--space-2) 0;
+}
+
+/* A snippet can be 160 characters with no spaces in it -- a bare URL, or a signature block that
+   survived quoting -- and without this it runs off the edge of the card. */
+.inbox-item__snippet {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Small screens: keep the header on one line ---------------------------------------- */
 
 .wordmark,

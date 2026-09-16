@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Inbox · Noble Hunter{% endblock %}
+
+{% block content %}
+<section class="page-heading rise">
+  <p class="eyebrow">Inbox</p>
+  <h1 class="page-heading__title">Conversations</h1>
+  {% if view.total %}
+  <p class="page-heading__lede">
+    {{ view.waiting }} waiting on you, {{ view.total }} open in all{% if view.unread %}, {{ view.unread }} unread{% endif %}.
+  </p>
+  {% endif %}
+
+  {% if view.profiles | length > 1 %}
+  <nav class="inbox-filter" aria-label="Filter by profile">
+    <a class="button button--small {{ 'button--primary' if not view.chosen_profile_id else 'button--ghost' }}"
+       href="/inbox"{% if not view.chosen_profile_id %} aria-current="page"{% endif %}>All</a>
+    {% for profile_id, profile_name in view.profiles %}
+    <a class="button button--small {{ 'button--primary' if view.chosen_profile_id == profile_id else 'button--ghost' }}"
+       href="/inbox?profile={{ profile_id }}"{% if view.chosen_profile_id == profile_id %} aria-current="page"{% endif %}>{{ profile_name }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  <div class="form__actions">
+    <button class="button button--ghost button--small" type="button" hx-post="/inbox/check"
+            hx-target="#inbox-list" hx-swap="outerHTML" hx-disabled-elt="this">
+      Check now
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+  </div>
+</section>
+
+{% include "inbox/_list.html" %}
+{% endblock %}

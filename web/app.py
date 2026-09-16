@@ -27,6 +27,7 @@ from web.budget import router as budget_router
 from web.db import build_engine
 from web.digest import router as digest_router
 from web.guard import install_guard
+from web.inbox import router as inbox_router
 from web.mail import MailExchange, gmail_for_mailbox, google_mail_exchange
 from web.mail import router as mail_router
 from web.people import router as people_router
@@ -86,6 +87,7 @@ def create_app(
     signed_in = [Depends(current_viewer)]
     for router in (
         digest_router,
+        inbox_router,
         pitches_router,
         profiles_router,
         profile_contents_router,
