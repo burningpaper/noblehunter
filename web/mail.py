@@ -22,7 +22,14 @@ from sqlalchemy.orm import Session
 from core.access import NotVisible, is_storable_id, require_profile
 from core.gmail import ACCESS_TOKEN_URL, Gmail
 from core.mail_crypto import MailNotConfigured, mail_cipher
-from core.mailboxes import MailboxProblem, artist_mailboxes, attach_mailbox, connect_mailbox, detach_mailbox
+from core.mailboxes import (
+    MailboxProblem,
+    artist_mailboxes,
+    attach_mailbox,
+    connect_mailbox,
+    detach_mailbox,
+    refresh_token_for,
+)
 from core.models import MailAccount, Profile
 from web.access import CurrentViewer
 from web.db import get_db
@@ -38,6 +45,7 @@ FormText = Annotated[str, Form()]
 
 TOKEN_TIMEOUT_SECONDS = 30
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GMAIL_SCOPES = (
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -50,6 +58,8 @@ class MailExchange(Protocol):
     """Swaps Google's one-time code for a refresh token, the address and a starting history id."""
 
     def exchange(self, code: str) -> tuple[str, str, str]: ...
+
+    def revoke(self, refresh_token: str) -> None: ...
 
 
 class GoogleMailExchange:
@@ -96,6 +106,11 @@ class GoogleMailExchange:
             address, history_id = gmail.profile()
         return refresh_token, address, history_id
 
+    def revoke(self, refresh_token: str) -> None:
+        """Tell Google the token is finished with, so disconnecting really disconnects."""
+        with httpx.Client(timeout=TOKEN_TIMEOUT_SECONDS) as client:
+            client.post(REVOKE_URL, data={"token": refresh_token})
+
 
 def google_mail_exchange(settings: WebSettings) -> MailExchange:
     return GoogleMailExchange(settings.google_client_id, settings.google_client_secret.get_secret_value())
@@ -133,7 +148,8 @@ def finish_connect(
     if not state or not secrets.compare_digest(state, str(pending.get("state", ""))):
         raise NotVisible("No mailbox connection is waiting")
     request.session.pop(SESSION_MAIL_CONNECT, None)
-    profile = require_profile(db, viewer, int(pending.get("profile_id", 0)))
+    # form_id, not int(): a tampered or stale session must be 404, never a 500 on a bad value.
+    profile = require_profile(db, viewer, form_id(str(pending.get("profile_id", ""))))
     cipher = _cipher_or_404(request)
 
     exchange = request.app.state.mail_exchange
@@ -186,9 +202,37 @@ def attach(
 @router.post("/profiles/{profile_id}/mail/disconnect")
 def disconnect(request: Request, profile_id: int, db: DbSession, viewer: CurrentViewer) -> Response:
     profile = require_profile(db, viewer, profile_id)
-    detach_mailbox(db, profile, now=datetime.now(UTC))
+    # Read the token first: detaching clears it, and we can only revoke what we can still read.
+    token = _token_to_revoke(request, db, profile)
+    released = detach_mailbox(db, profile, now=datetime.now(UTC))
     db.commit()
+    if released is not None and token:
+        _revoke(request, token)
     return _card(request, db, profile, notice="This profile isn't pitching from a mailbox now.")
+
+
+def _token_to_revoke(request: Request, db: Session, profile: Profile) -> str | None:
+    """This profile's refresh token, while it can still be read. None when there's nothing to revoke."""
+    cipher = cipher_or_none(request)
+    mailbox = db.get(MailAccount, profile.mail_account_id) if profile.mail_account_id else None
+    if cipher is None or mailbox is None or not mailbox.is_connected:
+        return None
+    try:
+        return refresh_token_for(mailbox, cipher)
+    except (MailboxProblem, MailNotConfigured):
+        return None  # a key that can't read it can't revoke it either; the row is cleared anyway
+
+
+def _revoke(request: Request, refresh_token: str) -> None:
+    """Hand the token back to Google. Best effort: a disconnect that can't reach Google still disconnects.
+
+    Only called when `detach_mailbox` says no profile uses the mailbox any more -- a mailbox two
+    profiles share must keep working for the one still pitching from it.
+    """
+    try:
+        request.app.state.mail_exchange.revoke(refresh_token)
+    except Exception:
+        logger.warning("Couldn't revoke a disconnected mailbox at Google; remove it there", exc_info=True)
 
 
 def card_context(

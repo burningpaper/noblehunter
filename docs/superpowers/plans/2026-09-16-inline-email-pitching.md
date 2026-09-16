@@ -100,6 +100,7 @@ Create `tests/test_mail_crypto.py`:
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 
 from core.mail_crypto import MailNotConfigured, decrypt_token, encrypt_token, mail_cipher
 
@@ -1771,6 +1772,7 @@ from datetime import UTC, datetime
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 
 from core.mail_crypto import mail_cipher
 from core.mailboxes import (
@@ -2167,6 +2169,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 
 from core.mail_crypto import mail_cipher
 from core.mailboxes import artist_mailboxes, refresh_token_for
@@ -2185,6 +2188,7 @@ class FakeGoogleMail:
         self.address = address
         self.refresh_token = refresh_token
         self.codes: list[str] = []
+        self.revoked: list[str] = []
         self.error: Exception | None = None
 
     def exchange(self, code: str) -> tuple[str, str, str]:
@@ -2193,10 +2197,15 @@ class FakeGoogleMail:
             raise self.error
         return self.refresh_token, self.address, "9000"
 
+    def revoke(self, refresh_token: str) -> None:
+        self.revoked.append(refresh_token)
+
 
 @pytest.fixture
 def mail_settings():
-    return web_settings().model_copy(update={"mail_token_key": KEY})
+    # SecretStr, not a bare string: model_copy skips validation, so a str would reach the routes
+    # and every one of them would raise on .get_secret_value().
+    return web_settings().model_copy(update={"mail_token_key": SecretStr(KEY)})
 
 
 def client_for(session, email="nik@example.com", *, settings=None, exchange=None):
@@ -2381,6 +2390,45 @@ class TestSharingAndLettingGo:
         assert session.get(MailAccount, mailbox.id).refresh_token_encrypted is None
 
 
+def _connected(session, mail_settings, exchange):
+    """A member whose profile has really been through the consent flow, so its token is readable."""
+    client, artist, profile = a_member(session, settings=mail_settings, exchange=exchange)
+    state = _state_from(client.get(f"/profiles/{profile.id}/mail/connect"))
+    client.get(f"/mail/callback?state={state}&code=auth-code")
+    return client, artist, profile
+
+
+class TestRevoking:
+    def test_the_last_profile_letting_go_hands_the_token_back_to_google(self, session, mail_settings):
+        exchange = FakeGoogleMail()
+        client, _artist, profile = _connected(session, mail_settings, exchange)
+
+        _post(client, f"/profiles/{profile.id}/mail/disconnect", {})
+
+        assert exchange.revoked == ["1//0refresh"]
+
+    def test_a_mailbox_another_profile_still_uses_is_not_revoked(self, session, mail_settings):
+        exchange = FakeGoogleMail()
+        client, artist, profile = _connected(session, mail_settings, exchange)
+        sharer = make_profile(session, "Second profile", artist=artist)
+        sharer.mail_account_id = session.get(Profile, profile.id).mail_account_id
+        session.flush()
+
+        _post(client, f"/profiles/{profile.id}/mail/disconnect", {})
+
+        assert exchange.revoked == []
+
+    def test_google_refusing_the_revocation_still_disconnects(self, session, mail_settings):
+        exchange = FakeGoogleMail()
+        client, _artist, profile = _connected(session, mail_settings, exchange)
+        exchange.error = RuntimeError("Google is down")
+
+        response = _post(client, f"/profiles/{profile.id}/mail/disconnect", {})
+
+        assert response.status_code == 200
+        assert session.get(Profile, profile.id).mail_account_id is None
+
+
 def _post(client, path, data):
     return client.post(
         path, data=data, headers={"x-csrf-token": csrf_token(client), "hx-request": "true"}
@@ -2419,7 +2467,14 @@ from sqlalchemy.orm import Session
 from core.access import NotVisible, is_storable_id, require_profile
 from core.gmail import ACCESS_TOKEN_URL, Gmail
 from core.mail_crypto import MailNotConfigured, mail_cipher
-from core.mailboxes import MailboxProblem, artist_mailboxes, attach_mailbox, connect_mailbox, detach_mailbox
+from core.mailboxes import (
+    MailboxProblem,
+    artist_mailboxes,
+    attach_mailbox,
+    connect_mailbox,
+    detach_mailbox,
+    refresh_token_for,
+)
 from core.models import MailAccount, Profile
 from web.access import CurrentViewer
 from web.db import get_db
@@ -2434,6 +2489,7 @@ FormText = Annotated[str, Form()]
 
 TOKEN_TIMEOUT_SECONDS = 30
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GMAIL_SCOPES = (
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -2446,6 +2502,8 @@ class MailExchange(Protocol):
     """Swaps Google's one-time code for a refresh token, the address and a starting history id."""
 
     def exchange(self, code: str) -> tuple[str, str, str]: ...
+
+    def revoke(self, refresh_token: str) -> None: ...
 
 
 class GoogleMailExchange:
@@ -2488,6 +2546,11 @@ class GoogleMailExchange:
             address, history_id = gmail.profile()
         return refresh_token, address, history_id
 
+    def revoke(self, refresh_token: str) -> None:
+        """Tell Google the token is finished with, so disconnecting really disconnects."""
+        with httpx.Client(timeout=TOKEN_TIMEOUT_SECONDS) as client:
+            client.post(REVOKE_URL, data={"token": refresh_token})
+
 
 def google_mail_exchange(settings) -> MailExchange:
     return GoogleMailExchange(settings.google_client_id, settings.google_client_secret.get_secret_value())
@@ -2525,7 +2588,8 @@ def finish_connect(
     if not state or not secrets.compare_digest(state, str(pending.get("state", ""))):
         raise NotVisible("No mailbox connection is waiting")
     request.session.pop(SESSION_MAIL_CONNECT, None)
-    profile = require_profile(db, viewer, int(pending.get("profile_id", 0)))
+    # form_id, not int(): a tampered or stale session must be 404, never a 500 on a bad value.
+    profile = require_profile(db, viewer, form_id(str(pending.get("profile_id", ""))))
     cipher = _cipher_or_404(request)
 
     exchange = request.app.state.mail_exchange
@@ -2578,9 +2642,37 @@ def attach(
 @router.post("/profiles/{profile_id}/mail/disconnect")
 def disconnect(request: Request, profile_id: int, db: DbSession, viewer: CurrentViewer) -> Response:
     profile = require_profile(db, viewer, profile_id)
-    detach_mailbox(db, profile, now=datetime.now(UTC))
+    # Read the token first: detaching clears it, and we can only revoke what we can still read.
+    token = _token_to_revoke(request, db, profile)
+    released = detach_mailbox(db, profile, now=datetime.now(UTC))
     db.commit()
+    if released is not None and token:
+        _revoke(request, token)
     return _card(request, db, profile, notice="This profile isn't pitching from a mailbox now.")
+
+
+def _token_to_revoke(request: Request, db: Session, profile: Profile) -> str | None:
+    """This profile's refresh token, while it can still be read. None when there's nothing to revoke."""
+    cipher = cipher_or_none(request)
+    mailbox = db.get(MailAccount, profile.mail_account_id) if profile.mail_account_id else None
+    if cipher is None or mailbox is None or not mailbox.is_connected:
+        return None
+    try:
+        return refresh_token_for(mailbox, cipher)
+    except (MailboxProblem, MailNotConfigured):
+        return None  # a key that can't read it can't revoke it either; the row is cleared anyway
+
+
+def _revoke(request: Request, refresh_token: str) -> None:
+    """Hand the token back to Google. Best effort: a disconnect that can't reach Google still disconnects.
+
+    Only called when `detach_mailbox` says no profile uses the mailbox any more -- a mailbox two
+    profiles share must keep working for the one still pitching from it.
+    """
+    try:
+        request.app.state.mail_exchange.revoke(refresh_token)
+    except Exception:
+        logger.warning("Couldn't revoke a disconnected mailbox at Google; remove it there", exc_info=True)
 
 
 def card_context(request: Request, db: Session, profile: Profile, notice: str | None = None) -> dict:
@@ -2729,11 +2821,20 @@ In `tests/route_walk.py`, the attach form must carry a real mailbox id, so chang
     "/profiles/{profile_id}/mail/attach": {"mail_account_id": "{mail_account_id}"},
 ```
 
-and in `call`, after the form is copied, substitute any `{...}` placeholder in a form value from `ids`:
+and in `call`, after the form is copied, substitute a placeholder form value from `ids`:
 
 ```python
-    form = {key: str(value).format(**ids) if "{" in str(value) else value for key, value in form.items()}
+def fill_form_value(value: str, ids: dict) -> str:
+    """`{profile_id}` becomes that id; anything else is left exactly as it is.
+
+    Only a value that is *entirely* a placeholder counts. The Ask Claude forms post real JSON
+    (`{"value": "stolen"}`), and running that through `.format()` mangles it.
+    """
+    name = value[1:-1] if value.startswith("{") and value.endswith("}") else ""
+    return str(ids[name]) if name in ids else value
 ```
+
+and use it where the form is built: `form = {key: fill_form_value(value, ids) for key, value in form.items()}`.
 
 - [ ] **Step 8: Run the tests**
 
@@ -3735,7 +3836,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `web/pitches.py`, `web/templates/pitch/_panel.html`, `tests/test_web_pitches.py`
-- Modify: `web/app.py`, `web/templates/digest/_entry.html`, `web/static/css/app.css`, `tests/route_walk.py`, `tests/access_world.py`, `tests/web_helpers.py`
+- Modify: `web/app.py`, `web/templates/digest/_entry.html`, `web/static/css/app.css`, `tests/route_walk.py`, `tests/access_world.py`, `tests/web_helpers.py`, `tests/test_web_access_controls.py`
+
+`tests/test_web_access_controls.py` asserts how many GET routes the walk has and that each answers 200. This task adds one GET (`/outreach/{id}/pitch`, a 200), so its count changes — that file needs updating whenever a route is added, and it isn't obvious from the failure message.
 
 The panel lives inside the digest entry, behind a disclosure, and is fetched the first time it's opened — so the digest page itself runs no extra queries for entries nobody writes to. Four routes: read the panel, ask Claude for a draft, save the draft, send it.
 
@@ -3947,6 +4050,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 
 from core.gmail import GmailError
 from core.models import EmailMessage, MailDirection, Outreach, OutreachStatus
@@ -3972,7 +4076,9 @@ EMAIL = "nina@broken-machines.com"
 
 @pytest.fixture
 def mail_settings():
-    return web_settings().model_copy(update={"mail_token_key": KEY})
+    # SecretStr, not a bare string: model_copy skips validation, so a str would reach the routes
+    # and every one of them would raise on .get_secret_value().
+    return web_settings().model_copy(update={"mail_token_key": SecretStr(KEY)})
 
 
 def a_digest_entry(session, *, with_mailbox=True, with_email=True):
@@ -5928,7 +6034,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `core/inbox_view.py`, `web/inbox.py`, `web/templates/inbox/page.html`, `web/templates/inbox/_list.html`, `tests/test_inbox_view.py`, `tests/test_web_inbox.py`
-- Modify: `web/app.py`, `web/templates/base.html`, `web/static/css/app.css`, `tests/route_walk.py`, `tests/access_world.py`
+- Modify: `web/app.py`, `web/templates/base.html`, `web/static/css/app.css`, `tests/route_walk.py`, `tests/access_world.py`, `tests/test_web_access_controls.py`
+
+`tests/test_web_access_controls.py` counts the walk's GET routes and expects each to answer 200. `/inbox` is a 200 GET, so the count moves — update it there.
 
 The digest answers "who should I write to tonight". The Inbox answers the other question: "who is waiting on me". One page, every conversation the viewer can see, the ones waiting on them first.
 
@@ -6309,6 +6417,7 @@ from datetime import date
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 
 from core.models import EmailMessage, MailDirection
 from tests.factories import (
@@ -6330,7 +6439,9 @@ NIGHT = date(2026, 9, 16)
 
 @pytest.fixture
 def mail_settings():
-    return web_settings().model_copy(update={"mail_token_key": KEY})
+    # SecretStr, not a bare string: model_copy skips validation, so a str would reach the routes
+    # and every one of them would raise on .get_secret_value().
+    return web_settings().model_copy(update={"mail_token_key": SecretStr(KEY)})
 
 
 class FakeReadingGmail:

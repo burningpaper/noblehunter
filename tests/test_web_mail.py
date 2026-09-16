@@ -23,6 +23,7 @@ class FakeGoogleMail:
         self.address = address
         self.refresh_token = refresh_token
         self.codes: list[str] = []
+        self.revoked: list[str] = []
         self.error: Exception | None = None
 
     def exchange(self, code: str) -> tuple[str, str, str]:
@@ -30,6 +31,9 @@ class FakeGoogleMail:
         if self.error:
             raise self.error
         return self.refresh_token, self.address, "9000"
+
+    def revoke(self, refresh_token: str) -> None:
+        self.revoked.append(refresh_token)
 
 
 @pytest.fixture
@@ -191,6 +195,45 @@ class TestSharingAndLettingGo:
         assert response.status_code == 200
         assert session.get(Profile, profile.id).mail_account_id is None
         assert session.get(MailAccount, mailbox.id).refresh_token_encrypted is None
+
+
+def _connected(session, mail_settings, exchange):
+    """A member whose profile has really been through the consent flow, so its token is readable."""
+    client, artist, profile = a_member(session, settings=mail_settings, exchange=exchange)
+    state = _state_from(client.get(f"/profiles/{profile.id}/mail/connect"))
+    client.get(f"/mail/callback?state={state}&code=auth-code")
+    return client, artist, profile
+
+
+class TestRevoking:
+    def test_the_last_profile_letting_go_hands_the_token_back_to_google(self, session, mail_settings):
+        exchange = FakeGoogleMail()
+        client, _artist, profile = _connected(session, mail_settings, exchange)
+
+        _post(client, f"/profiles/{profile.id}/mail/disconnect", {})
+
+        assert exchange.revoked == ["1//0refresh"]
+
+    def test_a_mailbox_another_profile_still_uses_is_not_revoked(self, session, mail_settings):
+        exchange = FakeGoogleMail()
+        client, artist, profile = _connected(session, mail_settings, exchange)
+        sharer = make_profile(session, "Second profile", artist=artist)
+        sharer.mail_account_id = session.get(Profile, profile.id).mail_account_id
+        session.flush()
+
+        _post(client, f"/profiles/{profile.id}/mail/disconnect", {})
+
+        assert exchange.revoked == []
+
+    def test_google_refusing_the_revocation_still_disconnects(self, session, mail_settings):
+        exchange = FakeGoogleMail()
+        client, _artist, profile = _connected(session, mail_settings, exchange)
+        exchange.error = RuntimeError("Google is down")
+
+        response = _post(client, f"/profiles/{profile.id}/mail/disconnect", {})
+
+        assert response.status_code == 200
+        assert session.get(Profile, profile.id).mail_account_id is None
 
 
 def _post(client, path, data):
