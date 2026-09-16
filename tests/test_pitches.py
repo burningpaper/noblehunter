@@ -308,3 +308,27 @@ class TestTheThread:
         assert mark_thread_read(session, outreach, now=NOW) == 0  # nothing left to mark
         ours = [m for m in thread_messages(session, outreach) if m.direction == MailDirection.OUT]
         assert all(message.read_at is None for message in ours)  # our own were never unread
+
+
+class TestGradesAndStatuses:
+    def test_an_address_nobody_corroborated_is_not_written_to(self, session):
+        """Grade C means only the name matched. The rest of the app won't use it; nor will this."""
+        curator = make_curator(session, display_name="Nina")
+        contact = make_contact(session, curator, "email", "maybe-nina@example.com")
+        contact.confidence = "C"
+        session.flush()
+        outreach = make_outreach(session, curator, make_profile(session), NIGHT)
+
+        with pytest.raises(PitchProblem, match="no email address"):
+            pitch_address(session, outreach)
+
+    def test_a_follow_up_does_not_walk_a_further_entry_backwards(self, session):
+        outreach, mailbox = a_sendable(session)
+        gmail = FakeGmail()
+        send(session, outreach, mailbox, gmail)
+        outreach.status = OutreachStatus.REPLIED
+        session.flush()
+
+        send(session, outreach, mailbox, gmail, subject="Re: Kelvin", body="Following up")
+
+        assert outreach.status == OutreachStatus.REPLIED

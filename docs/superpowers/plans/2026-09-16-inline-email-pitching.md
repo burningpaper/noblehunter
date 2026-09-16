@@ -3541,7 +3541,8 @@ class TestSending:
 
     def test_it_replies_to_the_curators_last_message(self, session):
         outreach, mailbox = a_sendable(session)
-        send(session, outreach, mailbox, FakeGmail())
+        gmail = FakeGmail()
+        send(session, outreach, mailbox, gmail)
         session.add(
             EmailMessage(
                 outreach_id=outreach.id,
@@ -3558,11 +3559,12 @@ class TestSending:
             )
         )
         session.flush()
-        gmail = FakeGmail()
 
+        # One fake throughout: it numbers messages per instance, so a second one would hand back
+        # msg1 again and trip the unique constraint before the assertion below is reached.
         send(session, outreach, mailbox, gmail, subject="Re: Kelvin", body="Here it is")
 
-        assert "In-Reply-To: <nina-1@mail.gmail.com>" in gmail.decoded()
+        assert "In-Reply-To: <nina-1@mail.gmail.com>" in gmail.decoded(1)
 
     def test_gmail_refusing_leaves_the_entry_untouched(self, session):
         outreach, mailbox = a_sendable(session)
@@ -3698,13 +3700,16 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.contact_routes import best_contact
+from core.contact_routes import USABLE_GRADES, best_contact
 from core.exclusion import PERMANENT_VERDICTS, record_verdict
 from core.mime import build_message
 from core.models import Contact, EmailMessage, MailAccount, MailDirection, Outreach, OutreachStatus, RouteType
 
 MAX_SUBJECT_LENGTH = 200
-NO_EMAIL = "This curator has no email address, so there's nothing to write to."
+NO_EMAIL = "This curator has no email address good enough to write to."
+# Sending is already done once the status reaches any of these; a follow-up must not walk the
+# entry backwards to "pitched" (a reply came in, or the track was placed).
+AT_OR_PAST_PITCHED = (OutreachStatus.PITCHED, OutreachStatus.REPLIED, OutreachStatus.PLACED)
 
 
 class PitchProblem(ValueError):
@@ -3716,13 +3721,21 @@ def pitch_address(session: Session, outreach: Outreach) -> str:
 
     `best_contact` picks by the same rule the digest page shows, but it can pick an Instagram
     handle; email pitching needs an email, so the curator's best *email* is used instead.
+
+    Same grades as everywhere else, though. A grade-C address is one where only the name
+    matched -- nobody corroborated it as this curator's -- and the rest of the app won't use it,
+    so neither will this. Writing to it would put a real email in a stranger's inbox.
     """
     best = best_contact(session, outreach.curator_id)
     if best is not None and best.route_type == RouteType.EMAIL:
         return best.value
     fallback = session.scalar(
         select(Contact)
-        .where(Contact.curator_id == outreach.curator_id, Contact.route_type == RouteType.EMAIL)
+        .where(
+            Contact.curator_id == outreach.curator_id,
+            Contact.route_type == RouteType.EMAIL,
+            Contact.confidence.in_(USABLE_GRADES),
+        )
         .order_by(Contact.confidence, Contact.id)
         .limit(1)
     )
@@ -3787,7 +3800,7 @@ def send_pitch(
     outreach.draft_subject = None
     outreach.draft_body = None
     outreach.draft_updated_at = None
-    if outreach.status != OutreachStatus.PITCHED:
+    if outreach.status not in AT_OR_PAST_PITCHED:
         record_verdict(session, outreach.id, OutreachStatus.PITCHED, now)
     session.flush()
     return record
@@ -4430,6 +4443,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.access import Viewer, require_outreach
@@ -4567,6 +4581,11 @@ def send(
         db.rollback()
         logger.warning("A stored Gmail token couldn't be read")
         return _panel(request, db, outreach, subject=subject, body=body, error=RECONNECT)
+    except IntegrityError:
+        # The send-key check is read-then-write, so two genuinely concurrent posts both pass it
+        # and the unique index catches the loser. Same meaning as the check: it went once.
+        db.rollback()
+        return _panel(request, db, outreach, notice=SENT)
     except (PitchProblem, MailboxProblem) as problem:
         db.rollback()
         already = "already been sent" in str(problem)
