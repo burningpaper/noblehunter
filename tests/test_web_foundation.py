@@ -63,6 +63,15 @@ class TestWebSettings:
 
         assert load_web_settings(env_file=None).secure_cookies is True
 
+    def test_mail_token_key_is_optional(self, web_env):
+        for name, value in WEB_ENV.items():
+            web_env.setenv(name, value)
+        web_env.delenv("MAIL_TOKEN_KEY", raising=False)
+
+        settings = load_web_settings(env_file=None)
+
+        assert settings.mail_token_key is None
+
     def test_errors_never_include_secret_values(self, web_env):
         for name, value in WEB_ENV.items():
             web_env.setenv(name, value)

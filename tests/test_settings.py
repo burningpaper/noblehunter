@@ -2,8 +2,10 @@ import pytest
 
 from core.settings import MissingSettingError, Settings, load_settings
 
-POOLED = "postgresql://user:secret@ep-test-pooler.neon.tech/neondb?sslmode=require"
-DIRECT = "postgresql://user:secret@ep-test.neon.tech/neondb?sslmode=require"
+# A password no field name could contain: "secret" alone also matches `google_client_secret=None`
+# in the repr, which would fail the leak test below without anything having leaked.
+POOLED = "postgresql://user:pw-must-not-leak@ep-test-pooler.neon.tech/neondb?sslmode=require"
+DIRECT = "postgresql://user:pw-must-not-leak@ep-test.neon.tech/neondb?sslmode=require"
 
 
 @pytest.fixture(autouse=True)
@@ -57,8 +59,8 @@ def test_repr_never_leaks_password(monkeypatch):
 
     settings = load_settings(env_file=None)
 
-    assert "secret" not in repr(settings)
-    assert "secret" not in str(settings)
+    assert "pw-must-not-leak" not in repr(settings)
+    assert "pw-must-not-leak" not in str(settings)
 
 
 def test_default_load_reads_env_local(monkeypatch, tmp_path):
@@ -78,6 +80,17 @@ def test_env_local_overrides_env(monkeypatch, tmp_path):
     settings = load_settings()
 
     assert settings.sqlalchemy_url(pooled=True) == "postgresql+psycopg://from-env-local/db"
+
+
+def test_mail_settings_are_optional(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host/db")
+    for name in ("MAIL_TOKEN_KEY", "GOOGLE_CLIENT_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = load_settings(env_file=None)
+
+    assert settings.mail_token_key is None
+    assert settings.google_client_id is None
 
 
 def test_settings_type_is_exported():

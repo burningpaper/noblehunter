@@ -24,6 +24,8 @@ class WebSettings(BaseSettings):
     secure_cookies: bool = True
     # Optional on purpose: without it the app still runs and Ask Claude explains what's missing.
     anthropic_api_key: SecretStr | None = None
+    # Optional on purpose: without it the Pitch mailbox card explains that mail isn't configured.
+    mail_token_key: SecretStr | None = None
 
     @field_validator("session_secret")
     @classmethod

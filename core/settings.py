@@ -23,6 +23,12 @@ class Settings(BaseSettings):
 
     database_url: SecretStr
     database_url_unpooled: SecretStr | None = None
+    # Mail: the runner refreshes Gmail tokens and reads replies, so it needs the same key the
+    # web app uses, plus the Google OAuth client the tokens were issued to. All optional: the
+    # pipeline runs exactly as before until a mailbox is connected.
+    mail_token_key: SecretStr | None = None
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
 
     def sqlalchemy_url(self, pooled: bool = True) -> str:
         secret = (
