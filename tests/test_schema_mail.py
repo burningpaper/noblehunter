@@ -161,6 +161,22 @@ def test_the_conversation_settings_have_sane_bounds(session, limit, days):
         session.flush()
 
 
+def test_deleting_a_mailbox_detaches_the_profile(session):
+    """The composite key must clear only the mailbox pointer, never the artist."""
+    artist = make_artist(session)
+    mailbox = make_mailbox(session, artist)
+    profile = make_profile(session, artist=artist)
+    profile.mail_account_id = mailbox.id
+    session.flush()
+
+    session.delete(mailbox)
+    session.flush()
+    session.expire(profile)  # the database cleared the column, not SQLAlchemy
+
+    assert profile.mail_account_id is None
+    assert profile.artist_id == artist.id
+
+
 def test_a_mailbox_is_kept_when_a_profile_lets_go(session):
     artist = make_artist(session)
     mailbox = make_mailbox(session, artist)

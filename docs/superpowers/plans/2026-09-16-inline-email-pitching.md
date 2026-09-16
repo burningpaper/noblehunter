@@ -410,7 +410,8 @@ def test_direction_must_be_in_or_out(session):
             outreach_id=entry.id,
             gmail_message_id="m2",
             gmail_thread_id="t1",
-            direction="sideways",
+            direction="up",  # three characters: `direction` is varchar(3), so a longer bad
+            # value is refused for its length and never reaches the CHECK this test is about
             from_address="a@b.com",
             to_address="c@d.com",
             subject="",
@@ -459,6 +460,22 @@ def test_the_conversation_settings_have_sane_bounds(session, limit, days):
     profile.open_conversation_limit, profile.quiet_after_days = limit, days
     with pytest.raises(IntegrityError):
         session.flush()
+
+
+def test_deleting_a_mailbox_detaches_the_profile(session):
+    """The composite key must clear only the mailbox pointer, never the artist."""
+    artist = make_artist(session)
+    mailbox = make_mailbox(session, artist)
+    profile = make_profile(session, artist=artist)
+    profile.mail_account_id = mailbox.id
+    session.flush()
+
+    session.delete(mailbox)
+    session.flush()
+    session.expire(profile)  # the database cleared the column, not SQLAlchemy
+
+    assert profile.mail_account_id is None
+    assert profile.artist_id == artist.id
 
 
 def test_a_mailbox_is_kept_when_a_profile_lets_go(session):
@@ -604,7 +621,9 @@ Change `Profile`:
             ["mail_account_id", "artist_id"],
             ["mail_accounts.id", "mail_accounts.artist_id"],
             name="mail_account_same_artist",
-            ondelete="SET NULL",
+            # Names the column so only the mailbox pointer is cleared: a bare SET NULL would
+            # null `artist_id` as well, which is NOT NULL, and the delete would fail instead.
+            ondelete="SET NULL (mail_account_id)",
         ),
         CheckConstraint("open_conversation_limit between 1 and 200", name="open_conversation_limit"),
         CheckConstraint("quiet_after_days between 1 and 365", name="quiet_after_days"),
@@ -740,7 +759,10 @@ def upgrade() -> None:
         "mail_accounts",
         ["mail_account_id", "artist_id"],
         ["id", "artist_id"],
-        ondelete="SET NULL",
+        # Only the mailbox pointer is cleared. A bare SET NULL would null `artist_id` too -- it's
+        # part of the composite key -- and that column is NOT NULL, so deleting a mailbox would
+        # fail instead of detaching the profile. (Column lists need Postgres 15+.)
+        ondelete="SET NULL (mail_account_id)",
     )
     op.create_check_constraint(
         op.f("ck_profiles_open_conversation_limit"), "profiles", "open_conversation_limit between 1 and 200"
@@ -829,9 +851,9 @@ In `core/db_roles.py`:
 - add a new constant below `WEB_CURATOR_COLUMNS`:
 
 ```python
-# The web app sets a profile's mailbox and an entry's draft and thread; the rest of those rows
-# stays pipeline-owned.
-WEB_PROFILE_COLUMNS = ("mail_account_id",)
+# The web app records an entry's draft and the thread it becomes; the rest of an outreach row
+# stays pipeline-owned. A profile's `mail_account_id` needs no entry here -- the web role can
+# already write every column of `profiles`.
 WEB_OUTREACH_MAIL_COLUMNS = (
     "mail_account_id",
     "gmail_thread_id",
@@ -842,7 +864,7 @@ WEB_OUTREACH_MAIL_COLUMNS = (
 )
 ```
 
-`profiles` is already fully writable by the web role, so `WEB_PROFILE_COLUMNS` is documentation only — don't add a grant for it. Extend the outreach grant line in `_statements` to include the new columns:
+Extend the outreach grant line in `_statements` to include the new columns:
 
 ```python
         f"GRANT UPDATE ({', '.join(WEB_OUTREACH_COLUMNS + WEB_OUTREACH_MAIL_COLUMNS)}) ON outreach TO {web}",
@@ -968,7 +990,10 @@ def test_a_refused_refresh_token_is_an_auth_error():
     assert REFRESH not in str(error.value)
 
 
-@pytest.mark.parametrize(("status", "kind"), [(401, "auth"), (403, "auth"), (429, "transient"), (503, "transient"), (400, "rejected")])
+@pytest.mark.parametrize(
+    ("status", "kind"),
+    [(401, "auth"), (403, "auth"), (429, "transient"), (503, "transient"), (400, "rejected")],
+)
 def test_api_failures_are_sorted_into_kinds(status, kind):
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url) == ACCESS_TOKEN_URL:
@@ -1102,6 +1127,7 @@ Nothing here logs a token, an address or a message body.
 """
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
@@ -1136,7 +1162,7 @@ class Gmail:
         client_id: str,
         client_secret: str,
         refresh_token: str,
-        now: callable = time.monotonic,
+        now: Callable[[], float] = time.monotonic,
     ):
         self._client = client
         self._client_id = client_id
@@ -7522,7 +7548,7 @@ Nothing else in this task touches secrets: Jarred puts the real values in `.env.
 
 - [ ] **Step 2: Write the developer log entry**
 
-Add a dated entry at the top of `.claude/DEVELOPER_LOGS.md`, in the voice the existing entries use — what changed, what problem it solved, what was decided and why. Cover:
+Builders add a log entry as they finish each task, so by now there are several small ones for this feature. Consolidate them into a single dated entry at the top of `.claude/DEVELOPER_LOGS.md`, in the voice the existing entries use — what changed, what problem it solved, what was decided and why — and delete the per-task fragments. Cover:
 
 - pitching by email from inside the digest: a Claude draft Jarred edits, sent from the artist's own Gmail;
 - **why a mailbox belongs to an artist, not to the app**: so a second artist can use Noble Hunter without sharing an inbox, and so two profiles for one artist can share one;

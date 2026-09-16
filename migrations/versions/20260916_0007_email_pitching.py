@@ -105,7 +105,10 @@ def upgrade() -> None:
         "mail_accounts",
         ["mail_account_id", "artist_id"],
         ["id", "artist_id"],
-        ondelete="SET NULL",
+        # Only the mailbox pointer is cleared. A bare SET NULL would null `artist_id` too -- it's
+        # part of the composite key -- and that column is NOT NULL, so deleting a mailbox would
+        # fail instead of detaching the profile. (Column lists need Postgres 15+.)
+        ondelete="SET NULL (mail_account_id)",
     )
     op.create_check_constraint(
         op.f("ck_profiles_open_conversation_limit"), "profiles", "open_conversation_limit between 1 and 200"

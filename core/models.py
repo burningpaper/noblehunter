@@ -298,7 +298,9 @@ class Profile(Base):
             ["mail_account_id", "artist_id"],
             ["mail_accounts.id", "mail_accounts.artist_id"],
             name="mail_account_same_artist",
-            ondelete="SET NULL",
+            # Names the column so only the mailbox pointer is cleared: a bare SET NULL would
+            # null `artist_id` as well, which is NOT NULL, and the delete would fail instead.
+            ondelete="SET NULL (mail_account_id)",
         ),
         CheckConstraint("open_conversation_limit between 1 and 200", name="open_conversation_limit"),
         CheckConstraint("quiet_after_days between 1 and 365", name="quiet_after_days"),

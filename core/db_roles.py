@@ -42,9 +42,9 @@ WEB_EDITABLE_TABLES = (
 )
 WEB_OUTREACH_COLUMNS = ("status", "status_changed_at", "pitched_at", "notes")
 WEB_CURATOR_COLUMNS = ("excluded_at", "exclusion_reason")
-# The web app sets a profile's mailbox and an entry's draft and thread; the rest of those rows
-# stays pipeline-owned.
-WEB_PROFILE_COLUMNS = ("mail_account_id",)
+# The web app records an entry's draft and the thread it becomes; the rest of an outreach row
+# stays pipeline-owned. A profile's `mail_account_id` needs no entry here -- the web role can
+# already write every column of `profiles`.
 WEB_OUTREACH_MAIL_COLUMNS = (
     "mail_account_id",
     "gmail_thread_id",
