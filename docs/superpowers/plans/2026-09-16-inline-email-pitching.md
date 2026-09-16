@@ -6210,7 +6210,9 @@ In `tests/route_walk.py`, add to `ROUTES`:
 
 Both are `OK` because neither takes an id: an outsider gets *their own* inbox, which the sweeps then check is empty of another artist's conversations. There's no FORMS entry: `/inbox/check` posts nothing.
 
-In `tests/access_world.py`, make the stub from Task 9 refuse only sends, so a legitimate "Check now" in the control walk doesn't blow up:
+In `tests/access_world.py`, the walk's two clients have **different** Gmail stubs, and they stay different: the outsider gets `_RefusingGmail` (a send there is a leak), and the admin gets a recording `FakeGmailSender` whose send must keep working, because the admin is the positive control. Don't collapse them.
+
+What changes here is only `_RefusingGmail`: "Check now" makes the admin *and* the outsider read their own mailboxes, so reading has to be allowed and find nothing, while a send stays a loud failure:
 
 ```python
 class _RefusingGmail:
@@ -6951,7 +6953,7 @@ Append to `web/static/css/app.css`:
 }
 
 .inbox-item--waiting {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--color-accent);
 }
 
 .inbox-item__header {
@@ -6965,7 +6967,7 @@ Append to `web/static/css/app.css`:
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  color: var(--text-dim);
+  color: var(--color-text-muted);
   margin: 0 0 var(--space-2);
 }
 
@@ -6973,6 +6975,8 @@ Append to `web/static/css/app.css`:
   margin: 0;
 }
 ```
+
+Read the `:root` block at the top of `app.css` before pasting, and check the spacing scale too — earlier tasks in this plan invented token names and had to be corrected mid-build.
 
 - [ ] **Step 7: Run the tests**
 
