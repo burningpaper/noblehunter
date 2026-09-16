@@ -5,8 +5,23 @@ from datetime import UTC, date, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from core.models import Curator, Outreach, PlaylistProfileFit, PlaylistStatus
-from tests.factories import make_contact, make_curator, make_outreach, make_playlist, make_profile
+from core.models import (
+    Artist,
+    Curator,
+    EmailMessage,
+    MailDirection,
+    Outreach,
+    PlaylistProfileFit,
+    PlaylistStatus,
+)
+from tests.factories import (
+    make_contact,
+    make_curator,
+    make_mailbox,
+    make_outreach,
+    make_playlist,
+    make_profile,
+)
 from tests.web_helpers import FakeGoogle, csrf_token, sign_in, web_settings
 from web.app import create_app
 from web.db import get_db
@@ -101,6 +116,44 @@ def test_the_digest_shows_each_entry_ready_to_pitch(client, session):
     assert f'hx-post="/outreach/{outreach.id}/verdict"' in html
     for verdict in ("pitched", "skip", "bad-fit", "dead"):
         assert f'"verdict": "{verdict}"' in html
+
+
+def a_reply(session, outreach: Outreach) -> None:
+    """A reply from the curator, in the mailbox this artist pitches from."""
+    mailbox = make_mailbox(session, session.get(Artist, outreach.profile.artist_id))
+    session.add(
+        EmailMessage(
+            outreach_id=outreach.id,
+            mail_account_id=mailbox.id,
+            direction=MailDirection.IN,
+            gmail_message_id="m1",
+            gmail_thread_id="t1",
+            from_address="nik@valleyview.example",
+            to_address="synman@gmail.com",
+            subject="Re: warm pads",
+            body_text="Send it over.",
+            sent_at=datetime(2026, 9, 15, 11, 0, tzinfo=UTC),
+        )
+    )
+    session.flush()
+
+
+def test_an_entry_nobody_has_written_to_offers_a_pitch(client, session):
+    an_entry(session)
+
+    html = page(client).text
+
+    assert "Write a pitch" in html
+    assert "Reply waiting" not in html
+
+
+def test_a_waiting_reply_shows_without_opening_anything(client, session):
+    a_reply(session, an_entry(session))
+
+    html = page(client).text
+
+    assert "Reply waiting" in html
+    assert "Read the reply" in html
 
 
 def test_a_short_digest_says_so_plainly(client, session):

@@ -16,6 +16,12 @@
   <p class="notice notice--warning">{{ warning }}</p>
   {% endfor %}
 
+  {# Mailbox trouble, scoped to this viewer's own artists: these name an address, so they can't
+     go through the admin-only warnings above. #}
+  {% for warning in mail_warnings %}
+  <p class="notice notice--warning">{{ warning }}</p>
+  {% endfor %}
+
   <dl class="run-facts">
     {% if status.current_run %}
     <div class="run-facts__row">

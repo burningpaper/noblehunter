@@ -5,6 +5,11 @@ allowed. "Run now" leaves a request in the database, and the runner on the Mac M
 up within a minute. The status panel reads the runner's check-in and the runs table, and says
 plainly when something needs attention: a runner that has gone quiet (the Mac is asleep or
 off), a run that failed, or a day with nothing finished.
+
+Mailboxes get their own warnings, in `mail_warnings`, and not because the code reads better
+that way: the warnings above are written for the admin and can name anyone's data, while a
+mailbox warning has to name an address. So that one is scoped with `visible_to` and a member
+never learns another artist's mailbox exists.
 """
 
 from dataclasses import dataclass
@@ -14,11 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core.models import Run, RunRequest, RunRequestStatus, RunStatus, WorkerStatus
+from core.access import Viewer, visible_to
+from core.models import MailAccount, Run, RunRequest, RunRequestStatus, RunStatus, WorkerStatus
 
 WORKER_ROW_ID = 1
 RUNNER_OFFLINE_AFTER = timedelta(minutes=3)
 NO_RUN_WARNING_AFTER = timedelta(hours=26)
+MAIL_UNREAD_AFTER = timedelta(hours=6)
 OPEN_REQUEST_STATUSES = (RunRequestStatus.PENDING, RunRequestStatus.CLAIMED)
 
 
@@ -91,6 +98,37 @@ def member_warnings(warnings: tuple[str, ...]) -> tuple[str, ...]:
     when there's nothing wrong.
     """
     return (MEMBER_WARNING,) if warnings else ()
+
+
+def mail_warnings(session: Session, viewer: Viewer, now: datetime) -> tuple[str, ...]:
+    """What to say about this viewer's mailboxes: the two failures that are otherwise silent.
+
+    Scoped with `visible_to`, so a member never learns another artist's mailbox address. These
+    are deliberately separate from `run_status`'s warnings, which are written for the admin and
+    can name anyone's data.
+    """
+    mailboxes = list(
+        session.scalars(
+            select(MailAccount).where(
+                visible_to(viewer, MailAccount.artist_id),
+                MailAccount.disconnected_at.is_(None),
+                MailAccount.refresh_token_encrypted.is_not(None),
+            )
+        )
+    )
+    if not mailboxes:
+        return ()
+
+    warnings = [
+        f"{mailbox.address} needs reconnecting before replies can be read or sent."
+        for mailbox in mailboxes
+        if mailbox.needs_reconnect
+    ]
+    latest = max((mailbox.last_checked_at for mailbox in mailboxes if mailbox.last_checked_at), default=None)
+    if latest is None or now - latest > MAIL_UNREAD_AFTER:
+        since = f"for {_span(now - latest)}" if latest else "yet"
+        warnings.append(f"Replies haven't been read {since}. Is the Mac Mini on and awake?")
+    return tuple(warnings)
 
 
 def relative_time(moment: datetime | None, now: datetime) -> str:

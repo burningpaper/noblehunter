@@ -17,7 +17,7 @@ is a second guard, not the only one). They come from the run that produced that 
 the latest run that started within that date (with a margin for the Mac's time zone).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import func, select
@@ -25,7 +25,18 @@ from sqlalchemy.orm import Session
 
 from core.access import Viewer, visible_to
 from core.contact_routes import ROUTE_LABELS, best_contact, contact_href
-from core.models import Artist, Curator, Outreach, Playlist, PlaylistProfileFit, Profile, Run, RunStageCount
+from core.models import (
+    Artist,
+    Curator,
+    EmailMessage,
+    MailDirection,
+    Outreach,
+    Playlist,
+    PlaylistProfileFit,
+    Profile,
+    Run,
+    RunStageCount,
+)
 
 PLAYLIST_URL = "https://open.spotify.com/playlist/{}"
 SHORT_DIGEST = 10
@@ -37,6 +48,27 @@ STAGE_LABELS = (
     ("research", "Contact researched"),
     ("digest", "In the digest"),
 )
+
+
+@dataclass(frozen=True)
+class EntryMail:
+    """What has passed between this entry and its curator. Derived, never a status column."""
+
+    sent: int = 0
+    received: int = 0
+    last_direction: str | None = None
+    last_at: datetime | None = None
+
+    @property
+    def waiting_on_you(self) -> bool:
+        return self.last_direction == MailDirection.IN
+
+    @property
+    def started(self) -> bool:
+        return bool(self.sent or self.received)
+
+
+NO_MAIL = EntryMail()
 
 
 @dataclass(frozen=True)
@@ -57,6 +89,7 @@ class EntryView:
     brief: str
     angle: str | None
     reference_artists: tuple[str, ...]
+    mail: EntryMail = NO_MAIL
 
 
 @dataclass(frozen=True)
@@ -128,7 +161,8 @@ def entry_view(session: Session, outreach_id: int, *, today: date) -> EntryView:
     row = session.execute(_entry_rows().where(Outreach.id == outreach_id)).first()
     if row is None:
         raise LookupError(f"Outreach {outreach_id} not found")
-    return _entry(session, *row, today=today)
+    mail = _mail_by_entry(session, [outreach_id])
+    return _entry(session, *row, today=today, mail=mail.get(outreach_id, NO_MAIL))
 
 
 def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tuple[ProfileDigest, ...]:
@@ -137,17 +171,29 @@ def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tu
     # them. Rows arrive in pipeline ranking order (Outreach.id), and dict insertion order plus a
     # stable sort keep that order within one artist once groups are sorted by artist name.
     groups: dict[tuple[int, str, int], tuple[str, list[EntryView]]] = {}
-    rows = session.execute(
-        _entry_rows()
-        .join(Artist, Artist.id == Profile.artist_id)
-        .add_columns(Artist.id, Artist.name)
-        .where(Outreach.digest_date == chosen, visible_to(viewer, Profile.artist_id))
-        .order_by(Outreach.id)
+    rows = list(
+        session.execute(
+            _entry_rows()
+            .join(Artist, Artist.id == Profile.artist_id)
+            .add_columns(Artist.id, Artist.name)
+            .where(Outreach.digest_date == chosen, visible_to(viewer, Profile.artist_id))
+            .order_by(Outreach.id)
+        )
     )
+    # Read once for the whole night: a query per entry would cost twenty statements on a page load.
+    mail = _mail_by_entry(session, [outreach.id for outreach, *_rest in rows])
     for outreach, profile, playlist, curator, artist_id, artist_name in rows:
         key = (artist_id, artist_name, profile.id)
         groups.setdefault(key, (profile.name, []))[1].append(
-            _entry(session, outreach, profile, playlist, curator, today=today)
+            _entry(
+                session,
+                outreach,
+                profile,
+                playlist,
+                curator,
+                today=today,
+                mail=mail.get(outreach.id, NO_MAIL),
+            )
         )
     # Artists in name order (case-insensitive, ties broken by id); within one artist, profiles
     # keep the pipeline's ranking order because sorted() is stable and shares that group's key.
@@ -156,6 +202,39 @@ def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tu
         ProfileDigest(artist_name, profile_name, tuple(entries))
         for (_artist_id, artist_name, _profile_id), (profile_name, entries) in ordered
     )
+
+
+def _mail_by_entry(session: Session, outreach_ids: list[int]) -> dict[int, EntryMail]:
+    """Every entry's mail state for the whole night. Entries with no mail aren't in the result.
+
+    Two queries, never one per entry: the counts, then who spoke last. DISTINCT ON and a window
+    function could fold them into one, and deliberately don't -- two plain queries read better
+    than one clever one, and the thing worth preventing is a query per row either way.
+    """
+    if not outreach_ids:
+        return {}
+    rows = session.execute(
+        select(
+            EmailMessage.outreach_id,
+            func.count().filter(EmailMessage.direction == MailDirection.OUT),
+            func.count().filter(EmailMessage.direction == MailDirection.IN),
+            func.max(EmailMessage.sent_at),
+        )
+        .where(EmailMessage.outreach_id.in_(outreach_ids))
+        .group_by(EmailMessage.outreach_id)
+    )
+    state = {
+        outreach_id: EntryMail(sent=sent, received=received, last_at=last_at)
+        for outreach_id, sent, received, last_at in rows
+    }
+    for outreach_id, direction in session.execute(
+        select(EmailMessage.outreach_id, EmailMessage.direction)
+        .where(EmailMessage.outreach_id.in_(outreach_ids))
+        .order_by(EmailMessage.outreach_id, EmailMessage.sent_at.desc(), EmailMessage.id.desc())
+        .distinct(EmailMessage.outreach_id)
+    ):
+        state[outreach_id] = replace(state[outreach_id], last_direction=direction)
+    return state
 
 
 def _entry_rows():
@@ -175,6 +254,7 @@ def _entry(
     curator: Curator,
     *,
     today: date,
+    mail: EntryMail = NO_MAIL,
 ) -> EntryView:
     contact = best_contact(session, curator.id)
     fit = session.get(PlaylistProfileFit, (playlist.spotify_id, profile.id))
@@ -195,6 +275,7 @@ def _entry(
         brief=outreach.brief_text,
         angle=outreach.suggested_angle,
         reference_artists=tuple(fit.reference_artists_present or ()) if fit else (),
+        mail=mail,
     )
 
 

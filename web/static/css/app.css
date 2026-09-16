@@ -1552,6 +1552,13 @@ code {
   display: none;
 }
 
+/* A reply nobody has answered yet: the one thing on a digest entry worth spotting from across
+   the list, so it borrows the accent rather than the muted border every other tag wears. */
+.tag--reply {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
 .digest-entry__pitch {
   margin-top: var(--space-3);
   border-top: 1px solid var(--color-border);

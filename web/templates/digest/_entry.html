@@ -18,6 +18,8 @@
     <span>updated {% if entry.days_since_last_add == 0 %}today{% else %}{{ entry.days_since_last_add }} {{ "day" if entry.days_since_last_add == 1 else "days" }} ago{% endif %}</span>
     {% endif %}
     {% if entry.reference_artists %}<span>{{ entry.reference_artists | join(", ") }}</span>{% endif %}
+    {% if entry.mail.waiting_on_you %}<span class="tag tag--reply">Reply waiting</span>
+    {% elif entry.mail.sent %}<span>pitched by email</span>{% endif %}
   </p>
 
   {% if entry.contact_value %}
@@ -53,7 +55,9 @@
   </div>
 
   <details class="digest-entry__pitch">
-    <summary class="digest-entry__pitch-summary">Write a pitch</summary>
+    <summary class="digest-entry__pitch-summary">
+      {% if entry.mail.waiting_on_you %}Read the reply{% elif entry.mail.started %}The conversation{% else %}Write a pitch{% endif %}
+    </summary>
     <div id="pitch-{{ entry.outreach_id }}" hx-get="/outreach/{{ entry.outreach_id }}/pitch"
          hx-trigger="toggle once from:closest details" hx-swap="innerHTML">
       <p class="field__hint">Loading…</p>

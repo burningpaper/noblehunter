@@ -14,7 +14,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from core.access import Viewer
-from core.run_status import member_warnings, request_run, run_status
+from core.run_status import mail_warnings, member_warnings, request_run, run_status
 from web.access import AdminViewer, CurrentViewer
 from web.db import get_db
 from web.templating import templates
@@ -44,6 +44,7 @@ def panel_context(db: Session, viewer: Viewer) -> dict:
         "now": now,
         "can_run_now": viewer.is_admin,
         "run_warnings": warnings,
+        "mail_warnings": mail_warnings(db, viewer, now),
     }
 
 
