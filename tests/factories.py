@@ -12,6 +12,7 @@ from core.models import (
     ArtistMember,
     Contact,
     Curator,
+    MailAccount,
     Outreach,
     Playlist,
     PlaylistStatus,
@@ -124,6 +125,20 @@ def make_contact(session, curator: Curator, route_type: str = "email", value: st
     session.add(contact)
     session.flush()
     return contact
+
+
+def make_mailbox(session, artist: Artist, address: str | None = None, **overrides) -> MailAccount:
+    fields = {
+        "artist_id": artist.id,
+        "address": address or f"mailbox{next(_sequence)}@gmail.com",
+        "refresh_token_encrypted": "encrypted-refresh-token",
+        "history_id": "1000",
+        **overrides,
+    }
+    mailbox = MailAccount(**fields)
+    session.add(mailbox)
+    session.flush()
+    return mailbox
 
 
 ADMIN_EMAIL = "owner@example.com"

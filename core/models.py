@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     MetaData,
     Numeric,
@@ -104,6 +105,11 @@ class RouteType(StrEnum):
     X = "x"
     BLUESKY = "bluesky"
     OTHER = "other"
+
+
+class MailDirection(StrEnum):
+    OUT = "out"
+    IN = "in"
 
 
 class Confidence(StrEnum):
@@ -217,6 +223,70 @@ class ArtistMember(Base):
     user: Mapped[User] = relationship(back_populates="memberships")
 
 
+# --- Mail ---------------------------------------------------------------------------
+
+
+class MailAccount(Base):
+    """A Gmail mailbox an artist pitches from. The refresh token is encrypted (core/mail_crypto.py).
+
+    `(id, artist_id)` is unique so `profiles` can point a composite foreign key at it and the
+    database itself refuses a profile using another artist's mailbox.
+    """
+
+    __tablename__ = "mail_accounts"
+    __table_args__ = (
+        UniqueConstraint("artist_id", "address"),
+        UniqueConstraint("id", "artist_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id", ondelete="CASCADE"), index=True)
+    address: Mapped[str] = mapped_column(String(320))
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    history_id: Mapped[str | None] = mapped_column(String(40))
+    connected_at: Mapped[datetime] = created_at_column()
+    connected_by: Mapped[str | None] = mapped_column(String(320))
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    needs_reconnect: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    artist: Mapped["Artist"] = relationship()
+
+    @property
+    def is_connected(self) -> bool:
+        return self.refresh_token_encrypted is not None and self.disconnected_at is None
+
+
+class EmailMessage(Base):
+    """One message in a pitch conversation, sent from Noble Hunter, from Gmail, or received."""
+
+    __tablename__ = "email_messages"
+    __table_args__ = (
+        UniqueConstraint("mail_account_id", "gmail_message_id"),
+        one_of("direction", MailDirection),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mail_account_id: Mapped[int] = mapped_column(ForeignKey("mail_accounts.id", ondelete="RESTRICT"))
+    outreach_id: Mapped[int] = mapped_column(ForeignKey("outreach.id", ondelete="CASCADE"), index=True)
+    gmail_message_id: Mapped[str] = mapped_column(String(64))
+    gmail_thread_id: Mapped[str] = mapped_column(String(64), index=True)
+    # The message's own RFC822 Message-ID, so our reply can quote it in In-Reply-To and land in
+    # the curator's thread rather than starting a new one in their client.
+    rfc822_message_id: Mapped[str | None] = mapped_column(String(400))
+    direction: Mapped[str] = mapped_column(String(3))
+    from_address: Mapped[str] = mapped_column(String(320))
+    to_address: Mapped[str] = mapped_column(String(320))
+    subject: Mapped[str] = mapped_column(Text)
+    body_text: Mapped[str] = mapped_column(Text)
+    quoted_text: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    send_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = created_at_column()
+
+
 # --- Profiles -----------------------------------------------------------------------
 
 
@@ -224,6 +294,14 @@ class Profile(Base):
     __tablename__ = "profiles"
     __table_args__ = (
         UniqueConstraint("artist_id", "name"),
+        ForeignKeyConstraint(
+            ["mail_account_id", "artist_id"],
+            ["mail_accounts.id", "mail_accounts.artist_id"],
+            name="mail_account_same_artist",
+            ondelete="SET NULL",
+        ),
+        CheckConstraint("open_conversation_limit between 1 and 200", name="open_conversation_limit"),
+        CheckConstraint("quiet_after_days between 1 and 365", name="quiet_after_days"),
         CheckConstraint("digest_target between 1 and 50", name="digest_target"),
         CheckConstraint("min_followers >= 0", name="min_followers"),
     )
@@ -235,6 +313,12 @@ class Profile(Base):
     digest_target: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     # Playlists with fewer followers aren't worth pitching (migration 0003); 0 means no floor.
     min_followers: Mapped[int] = mapped_column(Integer, default=50, server_default="50")
+    # Which of the artist's mailboxes this profile pitches from (migration 0007).
+    mail_account_id: Mapped[int | None] = mapped_column(Integer)
+    # Conversation load (Jarred, 2026-09-16): the digest tops up to this many open conversations,
+    # and a pitch stops counting as open once it has gone unanswered this long.
+    open_conversation_limit: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
+    quiet_after_days: Mapped[int] = mapped_column(Integer, default=14, server_default="14")
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -449,12 +533,23 @@ class Outreach(Base):
     """One digest entry. The 90-day per-curator EXCLUDE constraint lives in the migration."""
 
     __tablename__ = "outreach"
-    __table_args__ = (one_of("status", OutreachStatus),)
+    __table_args__ = (
+        one_of("status", OutreachStatus),
+        UniqueConstraint("mail_account_id", "gmail_thread_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     curator_id: Mapped[int] = mapped_column(ForeignKey("curators.id", ondelete="RESTRICT"))
     playlist_id: Mapped[str] = mapped_column(ForeignKey("playlists.spotify_id", ondelete="RESTRICT"))
     profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="RESTRICT"))
+    # The conversation, once a pitch has been sent (migration 0007). The mailbox is recorded here
+    # so replies keep working even if the profile later pitches from a different one.
+    mail_account_id: Mapped[int | None] = mapped_column(ForeignKey("mail_accounts.id", ondelete="RESTRICT"))
+    gmail_thread_id: Mapped[str | None] = mapped_column(String(64))
+    draft_subject: Mapped[str | None] = mapped_column(Text)
+    draft_body: Mapped[str | None] = mapped_column(Text)
+    draft_track_id: Mapped[int | None] = mapped_column(ForeignKey("profile_tracks.id", ondelete="SET NULL"))
+    draft_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     digest_date: Mapped[date] = mapped_column(Date)
     brief_text: Mapped[str] = mapped_column(Text)
     suggested_angle: Mapped[str | None] = mapped_column(Text)

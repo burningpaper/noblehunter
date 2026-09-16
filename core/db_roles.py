@@ -37,9 +37,22 @@ WEB_EDITABLE_TABLES = (
     "users",
     "artists",
     "artist_members",
+    "mail_accounts",
+    "email_messages",
 )
 WEB_OUTREACH_COLUMNS = ("status", "status_changed_at", "pitched_at", "notes")
 WEB_CURATOR_COLUMNS = ("excluded_at", "exclusion_reason")
+# The web app sets a profile's mailbox and an entry's draft and thread; the rest of those rows
+# stays pipeline-owned.
+WEB_PROFILE_COLUMNS = ("mail_account_id",)
+WEB_OUTREACH_MAIL_COLUMNS = (
+    "mail_account_id",
+    "gmail_thread_id",
+    "draft_subject",
+    "draft_body",
+    "draft_track_id",
+    "draft_updated_at",
+)
 
 
 def generate_password() -> str:
@@ -113,7 +126,7 @@ def _statements(web: str, pipeline: str, data_tables: list[str]) -> list[str]:
         # Web app.
         f"GRANT SELECT ON ALL TABLES IN SCHEMA public TO {web}",
         f"GRANT INSERT, UPDATE, DELETE ON {_table_list(WEB_EDITABLE_TABLES)} TO {web}",
-        f"GRANT UPDATE ({', '.join(WEB_OUTREACH_COLUMNS)}) ON outreach TO {web}",
+        f"GRANT UPDATE ({', '.join(WEB_OUTREACH_COLUMNS + WEB_OUTREACH_MAIL_COLUMNS)}) ON outreach TO {web}",
         f"GRANT UPDATE ({', '.join(WEB_CURATOR_COLUMNS)}) ON curators TO {web}",
         f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {web}",
         # Pipeline.

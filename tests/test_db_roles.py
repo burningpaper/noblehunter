@@ -70,6 +70,16 @@ class TestWebRole:
             can(roles, WEB, table, privilege) for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
         )
 
+    @pytest.mark.parametrize("table", ["mail_accounts", "email_messages"])
+    def test_can_manage_mail(self, roles, table):
+        assert all(
+            can(roles, WEB, table, privilege) for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
+        )
+
+    @pytest.mark.parametrize("column", ["mail_account_id", "gmail_thread_id", "draft_body"])
+    def test_can_record_a_draft_and_its_thread(self, roles, column):
+        assert can_on_column(roles, WEB, "outreach", column, "UPDATE")
+
     @pytest.mark.parametrize("sequence", ["users_id_seq", "artists_id_seq"])
     def test_can_use_people_id_sequences(self, roles, sequence):
         assert roles.scalar(
@@ -99,6 +109,10 @@ class TestPipelineRole:
         "table", ["playlists", "contacts", "outreach", "runs", "curators", "playlist_sources"]
     )
     def test_can_read_and_write_data(self, roles, table):
+        assert all(can(roles, PIPELINE, table, p) for p in ("SELECT", "INSERT", "UPDATE", "DELETE"))
+
+    @pytest.mark.parametrize("table", ["mail_accounts", "email_messages"])
+    def test_can_read_and_write_mail(self, roles, table):
         assert all(can(roles, PIPELINE, table, p) for p in ("SELECT", "INSERT", "UPDATE", "DELETE"))
 
     @pytest.mark.parametrize("table", ["users", "artists", "artist_members"])
