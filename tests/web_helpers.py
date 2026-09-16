@@ -57,9 +57,11 @@ def csrf_token(client: TestClient) -> str:
     return match.group(1)
 
 
-def app_client(session, google: FakeGoogle | None = None, **app_options) -> TestClient:
+def app_client(
+    session, google: FakeGoogle | None = None, *, settings: WebSettings | None = None, **app_options
+) -> TestClient:
     """A test client whose routes use the rolled-back test session. Not signed in."""
-    app = create_app(web_settings(), identity_provider=google or FakeGoogle(), **app_options)
+    app = create_app(settings or web_settings(), identity_provider=google or FakeGoogle(), **app_options)
 
     def use_test_session():
         yield session

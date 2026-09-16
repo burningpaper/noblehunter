@@ -1537,6 +1537,13 @@ code {
   display: none;
 }
 
+/* ---- Pitch mailbox ------------------------------------------------------------------- */
+
+.mail-card__address {
+  margin: 0 0 var(--space-3);
+  overflow-wrap: anywhere;
+}
+
 /* ---- Small screens: keep the header on one line ---------------------------------------- */
 
 .wordmark,

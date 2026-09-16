@@ -25,6 +25,8 @@ from web.budget import router as budget_router
 from web.db import build_engine
 from web.digest import router as digest_router
 from web.guard import install_guard
+from web.mail import MailExchange, google_mail_exchange
+from web.mail import router as mail_router
 from web.people import router as people_router
 from web.profile_contents import router as profile_contents_router
 from web.profiles import router as profiles_router
@@ -63,12 +65,14 @@ def create_app(
     settings: WebSettings,
     identity_provider: IdentityProvider | None = None,
     suggester: Suggester | None = None,
+    mail_exchange: MailExchange | None = None,
 ) -> FastAPI:
     app = _base_app()
     app.state.settings = settings
     app.state.engine = build_engine(settings)
     app.state.identity_provider = identity_provider or google_provider(settings)
     app.state.suggester = suggester or _claude_suggester(settings)
+    app.state.mail_exchange = mail_exchange or google_mail_exchange(settings)
     install_access_handlers(app)
     app.include_router(auth_router)  # sign-in and sign-out must work for someone without access
     signed_in = [Depends(current_viewer)]
@@ -77,6 +81,7 @@ def create_app(
         profiles_router,
         profile_contents_router,
         suggestions_router,
+        mail_router,
         runs_router,
         budget_router,
         people_router,

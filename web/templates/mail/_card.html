@@ -1,0 +1,60 @@
+{# The mailbox this profile pitches from. Swapped in place by attach and disconnect. #}
+<section class="card mail-card rise" id="mail-card" aria-labelledby="mail-card-heading">
+  <h2 id="mail-card-heading" class="card__title">Pitch mailbox</h2>
+
+  {% if mail_failed %}
+  {# Written out here rather than passed in: Jinja escapes an interpolated apostrophe. #}
+  <p class="notice notice--warning" role="status">
+    Google couldn't connect that mailbox. Try again, and pick the account you pitch from.
+  </p>
+  {% elif mail_notice %}
+  <p class="notice" role="status">{{ mail_notice }}</p>
+  {% endif %}
+
+  {% if not mail_configured %}
+  <p class="field__hint">
+    Email pitching isn't switched on: MAIL_TOKEN_KEY isn't set for this app.
+  </p>
+  {% elif mailbox %}
+  <p class="mail-card__address">Pitching from <strong>{{ mailbox.address }}</strong></p>
+  {% if mailbox.needs_reconnect %}
+  <p class="notice notice--warning" role="status">
+    Google refused this mailbox. Reconnect it to keep sending and reading replies.
+  </p>
+  {% endif %}
+  <div class="form__actions">
+    <a class="button {{ 'button--primary' if mailbox.needs_reconnect else 'button--ghost button--small' }}"
+       href="/profiles/{{ profile.id }}/mail/connect">
+      {{ "Reconnect Gmail" if mailbox.needs_reconnect else "Change" }}
+    </a>
+    <button class="button button--ghost button--small" type="button"
+            hx-post="/profiles/{{ profile.id }}/mail/disconnect" hx-target="#mail-card" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-confirm="Stop pitching {{ profile.name }} from {{ mailbox.address }}?">
+      Disconnect
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+    </button>
+  </div>
+  {% else %}
+  <p class="field__hint">Connect the Gmail you pitch from, then write to curators without leaving Noble Hunter.</p>
+  <div class="form__actions">
+    <a class="button button--primary" href="/profiles/{{ profile.id }}/mail/connect">Connect Gmail</a>
+  </div>
+  {% if other_mailboxes %}
+  <form class="form form--compact" hx-post="/profiles/{{ profile.id }}/mail/attach" hx-target="#mail-card"
+        hx-swap="outerHTML" hx-disabled-elt="find button" novalidate>
+    <div class="form__row">
+      <label class="field__label" for="mail-account">Or use one this artist already connected</label>
+      <select class="input input--select" id="mail-account" name="mail_account_id">
+        {% for box in other_mailboxes %}
+        <option value="{{ box.id }}">{{ box.address }}</option>
+        {% endfor %}
+      </select>
+      <button class="button button--small" type="submit">
+        Use it
+        <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>

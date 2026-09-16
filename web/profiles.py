@@ -29,6 +29,7 @@ from web.access import CurrentViewer
 from web.budget import budget_context
 from web.db import get_db
 from web.forms import form_id
+from web.mail import card_context
 from web.runs import panel_context
 from web.templating import templates
 
@@ -86,6 +87,7 @@ def profile_page(request: Request, profile_id: int, db: DbSession, viewer: Curre
         "errors": {},
         "saved": False,
         "problems": activation_problems(profile),
+        **card_context(request, db, profile),
     }
     return templates.TemplateResponse(request, "profiles/detail.html", context)
 

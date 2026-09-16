@@ -21,6 +21,8 @@
       {% include "profiles/_settings_form.html" %}
     </section>
 
+    {% include "mail/_card.html" %}
+
     {% for section in ["genres", "artists", "anti_signals", "tracks", "terms"] %}
     {% include "profiles/sections/_" ~ section ~ ".html" %}
     {% endfor %}

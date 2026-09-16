@@ -8,6 +8,8 @@ a 200 on their own pages means their own content really rendered.
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 
+from cryptography.fernet import Fernet
+from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
@@ -18,6 +20,7 @@ from core.models import (
     Artist,
     ArtistMember,
     Curator,
+    MailAccount,
     Outreach,
     Profile,
     ProfileGenre,
@@ -29,9 +32,17 @@ from core.models import (
     SearchTerm,
     User,
 )
-from tests.factories import make_artist, make_curator, make_member, make_outreach, make_profile, make_user
+from tests.factories import (
+    make_artist,
+    make_curator,
+    make_mailbox,
+    make_member,
+    make_outreach,
+    make_profile,
+    make_user,
+)
 from tests.profile_helpers import add_contents
-from tests.web_helpers import FakeSuggester, app_client, member_client, sign_in
+from tests.web_helpers import FakeSuggester, app_client, member_client, sign_in, web_settings
 
 NIGHT = date(2026, 9, 15)
 THEIR_ARTIST, THEIR_PROFILE, THEIR_BRIEF = "Their Artist", "Their Profile", "Their secret brief"
@@ -39,6 +50,15 @@ MY_PROFILE, MY_BRIEF = "My Profile", "My own brief"
 RUN_ERROR_MARKER = "raw-run-error-naming-their-playlist"
 OUTSIDER_EMAIL = "me@example.com"
 NIGHT_IN_NUMBERS = "The night in numbers"
+# Mail is configured in this world, so the Pitch mailbox routes really run. Otherwise an
+# outsider's 404 on them could come from a missing MAIL_TOKEN_KEY rather than the access check.
+MAIL_KEY = Fernet.generate_key().decode()
+
+
+def world_settings():
+    # SecretStr, not a bare string: model_copy skips validation, so the value has to arrive in
+    # the shape pydantic would have stored it in.
+    return web_settings().model_copy(update={"mail_token_key": SecretStr(MAIL_KEY)})
 
 
 @dataclass
@@ -56,6 +76,10 @@ def build_world(session: Session) -> World:
     # Two genres, so a leaked move really reorders them.
     profile = add_contents(session, make_profile(session, THEIR_PROFILE, artist=theirs), genres=2)
     session.add(AntiSignal(profile=profile, kind="term", value="lofi"))
+    session.flush()
+    # A mailbox they pitch from, so attach and disconnect have something real to change.
+    mailbox = make_mailbox(session, theirs, address="theirs@gmail.com")
+    profile.mail_account_id = mailbox.id
     session.flush()
     owner = make_member(session, theirs, make_user(session, "them@example.com"))
     outreach = make_outreach(session, make_curator(session), profile, NIGHT, brief_text=THEIR_BRIEF)
@@ -79,6 +103,7 @@ def build_world(session: Session) -> World:
         "outreach_id": outreach.id,
         "artist_id": theirs.id,
         "user_id": owner.id,
+        "mail_account_id": mailbox.id,
     }
     return World(ids, profile.id, outreach.id, theirs.id, mine.id, outsider.id)
 
@@ -99,12 +124,12 @@ def _add_failed_run_with_counts(session: Session, profile_id: int) -> None:
 
 
 def outsider_client(session: Session, suggester: FakeSuggester) -> TestClient:
-    return member_client(session, OUTSIDER_EMAIL, suggester=suggester)
+    return member_client(session, OUTSIDER_EMAIL, suggester=suggester, settings=world_settings())
 
 
 def admin_client(session: Session, suggester: FakeSuggester | None = None) -> TestClient:
     """Signed in as the admin. Sign in before taking a snapshot: signing in writes the user row."""
-    client = app_client(session, suggester=suggester or FakeSuggester())
+    client = app_client(session, suggester=suggester or FakeSuggester(), settings=world_settings())
     sign_in(client)
     return client
 
@@ -116,6 +141,10 @@ def seed_route_state(session: Session, world: World, method: str, path: str) -> 
         profile.is_active = False
     elif (method, path) == ("POST", "/profiles/{profile_id}/pause"):
         profile.is_active = True
+    elif (method, path) == ("POST", "/profiles/{profile_id}/mail/attach"):
+        # Point them at a different mailbox, so attaching the one the walk posts really moves it.
+        spare = make_mailbox(session, session.get(Artist, world.artist_id), address="spare@gmail.com")
+        profile.mail_account_id = spare.id
     session.flush()
 
 
@@ -162,6 +191,11 @@ def their_data(session: Session, world: World) -> dict:
         "terms": sorted(
             (t.term, t.status, t.origin)
             for t in session.scalars(select(SearchTerm).where(SearchTerm.profile_id == pid))
+        ),
+        "profile_mailbox": profile.mail_account_id,
+        "mailboxes": sorted(
+            (box.address, box.refresh_token_encrypted is not None, box.needs_reconnect)
+            for box in session.scalars(select(MailAccount).where(MailAccount.artist_id == world.artist_id))
         ),
         "outreach": (outreach.status, outreach.status_changed_at, outreach.pitched_at, outreach.notes),
         "curator": (curator.excluded_at, curator.exclusion_reason),

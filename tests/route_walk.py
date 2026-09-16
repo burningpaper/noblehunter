@@ -51,6 +51,10 @@ ROUTES = {
     ("DELETE", "/profiles/{profile_id}/terms/{term_id}"): NOT_FOUND,
     ("POST", "/profiles/{profile_id}/suggest/{section}"): NOT_FOUND,
     ("POST", "/profiles/{profile_id}/suggest/{section}/add"): NOT_FOUND,
+    ("GET", "/profiles/{profile_id}/mail/connect"): NOT_FOUND,
+    ("POST", "/profiles/{profile_id}/mail/attach"): NOT_FOUND,
+    ("POST", "/profiles/{profile_id}/mail/disconnect"): NOT_FOUND,
+    ("GET", "/mail/callback"): NOT_FOUND,
     ("GET", "/digest"): OK,
     ("GET", "/digest/{day}"): OK,
     ("POST", "/outreach/{outreach_id}/verdict"): NOT_FOUND,
@@ -77,6 +81,7 @@ FORMS = {
     "/profiles/{profile_id}/terms/{term_id}/status": {"status": "paused"},
     "/profiles/{profile_id}/suggest/{section}": {"prompt": "More like this"},
     "/profiles/{profile_id}/suggest/{section}/add": {"choice": '{"value": "stolen"}'},
+    "/profiles/{profile_id}/mail/attach": {"mail_account_id": "{mail_account_id}"},
     "/outreach/{outreach_id}/verdict": {"verdict": "bad-fit"},
     "/settings/claude-budget": {"budget": "9.00"},
     "/people/members": {"email": "x@example.com", "artist_id": "new", "new_artist_name": "Stolen"},
@@ -150,6 +155,16 @@ def fill_path(path: str, ids: dict) -> str:
     return path.format(**values)
 
 
+def fill_form_value(value: str, ids: dict) -> str:
+    """A form value that is exactly "{some_id}" is filled from `ids`, like a URL's placeholders.
+
+    Only a whole-value placeholder counts: an Ask Claude choice is JSON, full of braces that
+    mean nothing to the walk and must reach the route as typed.
+    """
+    match = PLACEHOLDER.fullmatch(value)
+    return str(ids[match.group(1)]) if match else value
+
+
 def call(
     client: TestClient,
     method: str,
@@ -165,7 +180,7 @@ def call(
     The form's artist id (creating a profile, adding a member) is `ids["artist_id"]` unless
     `form_artist_id` says otherwise.
     """
-    form = dict(FORMS.get(path, {}))
+    form = {key: fill_form_value(value, ids) for key, value in FORMS.get(path, {}).items()}
     if (method, path) in FORM_ARTIST_ID_ROUTES:
         form["artist_id"] = str(ids["artist_id"] if form_artist_id is None else form_artist_id)
     headers = {"accept": "text/html", "x-csrf-token": token}
