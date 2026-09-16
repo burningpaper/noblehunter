@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.contacts import contact_key, email_domain_key, normalize_email, normalize_handle, normalize_url
+from core.conversations import loads_for
 from core.exclusion import contact_is_excluded, curator_is_eligible
 from core.models import (
     Confidence,
@@ -383,9 +384,16 @@ def run_research(
     summary = ResearchSummary()
     ready: dict[int, int] = defaultdict(int)
     seen_curators: set[int] = set()
+    # The same ceiling the digest works to, worked out once before the loop. Researching a lead
+    # costs about five cents, so a profile with no room tonight shouldn't be paying for leads it
+    # can't be handed.
+    allowances = {
+        profile_id: load.allowance
+        for profile_id, load in loads_for(session, _active_profiles(session), now=now).items()
+    }
 
     for playlist, profile, fit in _candidates(session):
-        if playlist.curator_id in seen_curators or ready[profile.id] >= profile.digest_target:
+        if playlist.curator_id in seen_curators or ready[profile.id] >= allowances.get(profile.id, 0):
             continue
         seen_curators.add(playlist.curator_id)
         if not curator_is_eligible(session, playlist.curator_id, today):
@@ -424,6 +432,12 @@ def run_research(
     record_stage(session, run, "research", count_in=summary.researched, count_out=summary.reachable)
     session.commit()
     return summary
+
+
+def _active_profiles(session: Session) -> list[Profile]:
+    """Every active profile, not just the ones with mail: one with no conversations at all still
+    needs an allowance, or research skips it all night and it never reaches the digest."""
+    return list(session.scalars(select(Profile).where(Profile.is_active.is_(True))))
 
 
 def _candidates(session: Session) -> list[tuple[Playlist, Profile, PlaylistProfileFit]]:

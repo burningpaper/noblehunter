@@ -13,13 +13,16 @@ from tests.factories import make_curator, make_mailbox, make_outreach, make_play
 def pitched(session, profile, *, messages, now: datetime):
     """An outreach entry with `messages`, each given as (direction, days before `now`).
 
-    The entry's digest date comes from `now`, so this suits any test's clock -- the digest and
-    research suites each have their own, and a conversation dated in their future would be odd.
+    The entry is dated the night its oldest message went out, which is what makes it a
+    conversation rather than one of tonight's leads. Dating it `now` would put it in tonight's
+    digest, where the digest counts it as a lead already handed over -- so a test asking for
+    four open conversations would silently also be asking for four fewer leads tonight.
     """
     mailbox_id = profile.mail_account_id or _a_mailbox(session, profile).id
     curator = make_curator(session)
+    pitched_on = (now - timedelta(days=max((days for _direction, days in messages), default=0))).date()
     outreach = make_outreach(
-        session, curator, profile, now.date(), playlist=make_playlist(session, curator=curator)
+        session, curator, profile, pitched_on, playlist=make_playlist(session, curator=curator)
     )
     outreach.mail_account_id = mailbox_id
     outreach.gmail_thread_id = f"thread{outreach.id}"

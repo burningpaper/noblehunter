@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from core.access import Viewer, visible_to
 from core.contact_routes import ROUTE_LABELS, best_contact, contact_href
+from core.conversations import loads_for
 from core.models import (
     Artist,
     Curator,
@@ -97,6 +98,9 @@ class ProfileDigest:
     artist_name: str
     profile_name: str
     entries: tuple[EntryView, ...]
+    # How full the profile's inbox is tonight, which is what decided the size of this group.
+    open_conversations: int = 0
+    conversation_limit: int = 0
 
 
 @dataclass(frozen=True)
@@ -125,7 +129,17 @@ class DigestView:
         return 0 < self.total < SHORT_DIGEST
 
 
-def digest_view(session: Session, digest_date: date | None, *, today: date, viewer: Viewer) -> DigestView:
+def digest_view(
+    session: Session,
+    digest_date: date | None,
+    *,
+    today: date,
+    viewer: Viewer,
+    now: datetime | None = None,
+) -> DigestView:
+    # `now` decides which conversations still count as open. It defaults rather than being
+    # required because every caller already passes `today` and none of them has a clock to hand;
+    # a test that needs a fixed one supplies it.
     dates = list(
         session.scalars(
             select(Outreach.digest_date)
@@ -149,7 +163,7 @@ def digest_view(session: Session, digest_date: date | None, *, today: date, view
 
     return DigestView(
         digest_date=chosen,
-        profiles=_profiles(session, chosen, today, viewer),
+        profiles=_profiles(session, chosen, today, viewer, now or datetime.now(UTC)),
         counts=_counts(session, chosen) if viewer.is_admin else (),
         earlier_date=next((day for day in dates if day < chosen), None),
         later_date=next((day for day in reversed(dates) if day > chosen), None),
@@ -165,12 +179,15 @@ def entry_view(session: Session, outreach_id: int, *, today: date) -> EntryView:
     return _entry(session, *row, today=today, mail=mail.get(outreach_id, NO_MAIL))
 
 
-def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tuple[ProfileDigest, ...]:
+def _profiles(
+    session: Session, chosen: date, today: date, viewer: Viewer, now: datetime
+) -> tuple[ProfileDigest, ...]:
     # Keyed on ids, not names: artist names are unique only case-sensitively, and two artists
     # could otherwise collide here even though `visible_to` and the profiles page never confuse
     # them. Rows arrive in pipeline ranking order (Outreach.id), and dict insertion order plus a
     # stable sort keep that order within one artist once groups are sorted by artist name.
     groups: dict[tuple[int, str, int], tuple[str, list[EntryView]]] = {}
+    profiles: dict[int, Profile] = {}
     rows = list(
         session.execute(
             _entry_rows()
@@ -184,6 +201,7 @@ def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tu
     mail = _mail_by_entry(session, [outreach.id for outreach, *_rest in rows])
     for outreach, profile, playlist, curator, artist_id, artist_name in rows:
         key = (artist_id, artist_name, profile.id)
+        profiles[profile.id] = profile
         groups.setdefault(key, (profile.name, []))[1].append(
             _entry(
                 session,
@@ -198,9 +216,17 @@ def _profiles(session: Session, chosen: date, today: date, viewer: Viewer) -> tu
     # Artists in name order (case-insensitive, ties broken by id); within one artist, profiles
     # keep the pipeline's ranking order because sorted() is stable and shares that group's key.
     ordered = sorted(groups.items(), key=lambda item: (item[0][1].casefold(), item[0][0]))
+    # Read once for the whole night, like the mail above: the same figures the pipeline worked to.
+    loads = loads_for(session, list(profiles.values()), now=now)
     return tuple(
-        ProfileDigest(artist_name, profile_name, tuple(entries))
-        for (_artist_id, artist_name, _profile_id), (profile_name, entries) in ordered
+        ProfileDigest(
+            artist_name,
+            profile_name,
+            tuple(entries),
+            open_conversations=loads[profile_id].open_now,
+            conversation_limit=loads[profile_id].limit,
+        )
+        for (_artist_id, artist_name, profile_id), (profile_name, entries) in ordered
     )
 
 

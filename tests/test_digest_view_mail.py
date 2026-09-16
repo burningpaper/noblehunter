@@ -120,6 +120,17 @@ def test_the_single_entry_view_reads_the_same_state(session):
     assert entry_view(session, outreach.id, today=TODAY).mail.waiting_on_you is True
 
 
+def test_the_group_says_how_many_conversations_are_open(session):
+    outreach, mailbox = an_entry(session)
+    add_message(session, outreach, mailbox, MailDirection.OUT, SENT_AT, "m1")
+
+    # `now=SENT_AT`, not the wall clock: the pitch is only open for `quiet_after_days` after it
+    # was sent, so against the real clock this test would start failing a fortnight from now.
+    group = digest_view(session, NIGHT, today=TODAY, viewer=admin_viewer(), now=SENT_AT).profiles[0]
+
+    assert (group.open_conversations, group.conversation_limit) == (1, 20)
+
+
 def test_the_night_reads_mail_in_a_fixed_number_of_queries(session):
     outreach, mailbox = an_entry(session)
     an_entry(session)
@@ -131,5 +142,7 @@ def test_the_night_reads_mail_in_a_fixed_number_of_queries(session):
     with record_statements(session, statements):
         digest_view(session, NIGHT, today=TODAY, viewer=admin_viewer())
 
-    # Two: one for the counts, one for who spoke last. Three entries, still two -- never per entry.
-    assert sum("email_messages" in statement for statement in statements) == 2
+    # Three: the counts, who spoke last, and the night's conversation load -- the third arrived
+    # with the "n of m conversations open" heading. Three entries, still three: never per entry,
+    # which is the thing this test exists to stop.
+    assert sum("email_messages" in statement for statement in statements) == 3

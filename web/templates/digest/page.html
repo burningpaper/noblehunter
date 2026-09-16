@@ -53,6 +53,9 @@
     <h2 class="digest-group__title" id="digest-group-{{ loop.index }}">
       {% if view.show_artists %}<span class="digest-group__artist">{{ group.artist_name }}</span><span class="visually-hidden">: </span>{% endif %}
       {{ group.profile_name }} <span class="digest-group__count">{{ group.entries | length }}</span>
+      {% if group.conversation_limit %}
+      <span class="digest-group__load">{{ group.open_conversations }} of {{ group.conversation_limit }} conversations open</span>
+      {% endif %}
     </h2>
     <ol class="digest-list" role="list">
       {% for entry in group.entries %}

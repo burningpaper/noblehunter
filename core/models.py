@@ -34,6 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
+from core.profile_rules import DEFAULT_OPEN_CONVERSATIONS, DEFAULT_QUIET_AFTER_DAYS
 from core.text import normalize_text
 
 NAMING_CONVENTION = {
@@ -319,8 +320,14 @@ class Profile(Base):
     mail_account_id: Mapped[int | None] = mapped_column(Integer)
     # Conversation load (Jarred, 2026-09-16): the digest tops up to this many open conversations,
     # and a pitch stops counting as open once it has gone unanswered this long.
-    open_conversation_limit: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
-    quiet_after_days: Mapped[int] = mapped_column(Integer, default=14, server_default="14")
+    # `server_default` stays a literal: it belongs to migration 0007 and describes rows the
+    # database writes without Python, where these constants aren't in scope.
+    open_conversation_limit: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_OPEN_CONVERSATIONS, server_default="20"
+    )
+    quiet_after_days: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_QUIET_AFTER_DAYS, server_default="14"
+    )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

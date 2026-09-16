@@ -13,10 +13,18 @@ from itertools import count
 import pytest
 from sqlalchemy import select
 
-from core.models import Outreach, PlaylistProfileFit, PlaylistStatus, ProfileTrack, RunStageCount
+from core.models import (
+    MailDirection,
+    Outreach,
+    PlaylistProfileFit,
+    PlaylistStatus,
+    ProfileTrack,
+    RunStageCount,
+)
 from pipeline.digest import Brief, build_digest
 from pipeline.qualify import size_band
 from pipeline.runs import start_run
+from tests.conversation_helpers import open_conversation, pitched
 from tests.factories import make_contact, make_curator, make_outreach, make_playlist, make_profile
 
 TODAY = date(2026, 9, 15)
@@ -287,3 +295,79 @@ def test_recent_activity_ranks_above_stale_activity(session, days):
     digest_tonight(session)
 
     assert [entry.playlist_id for entry in entries_today(session)] == [fresher.spotify_id]
+
+
+class TestConversationAllowance:
+    """The ceiling, not the target, decides how many leads a profile gets (Jarred, 2026-09-16)."""
+
+    def test_an_empty_profile_takes_its_whole_target(self, session):
+        profile = active_profile(session, digest_target=3)
+        for _ in range(5):
+            ready_lead(session, profile)
+
+        digest_tonight(session)
+
+        assert len(entries_today(session)) == 3
+
+    def test_open_conversations_take_room_away(self, session):
+        profile = active_profile(session, digest_target=5)
+        profile.open_conversation_limit = 6
+        for _ in range(4):
+            open_conversation(session, profile, now=NOW)
+        for _ in range(5):
+            ready_lead(session, profile)
+
+        digest_tonight(session)
+
+        assert len(entries_today(session)) == 2
+
+    def test_a_full_profile_gets_nothing_tonight(self, session):
+        profile = active_profile(session, digest_target=5)
+        profile.open_conversation_limit = 2
+        for _ in range(2):
+            open_conversation(session, profile, now=NOW)
+        ready_lead(session, profile)
+
+        digest_tonight(session)
+
+        assert entries_today(session) == []
+
+    def test_quiet_conversations_give_the_room_back(self, session):
+        profile = active_profile(session, digest_target=5)
+        profile.open_conversation_limit, profile.quiet_after_days = 2, 14
+        open_conversation(session, profile, now=NOW, days_ago=40)
+        open_conversation(session, profile, now=NOW, days_ago=40)
+        for _ in range(3):
+            ready_lead(session, profile)
+
+        digest_tonight(session)
+
+        assert len(entries_today(session)) == 2
+
+    def test_a_reply_keeps_taking_up_room_however_old(self, session):
+        profile = active_profile(session, digest_target=5)
+        profile.open_conversation_limit, profile.quiet_after_days = 1, 14
+        pitched(
+            session,
+            profile,
+            messages=[(MailDirection.OUT, 60), (MailDirection.IN, 50)],
+            now=NOW,
+        )
+        ready_lead(session, profile)
+
+        digest_tonight(session)
+
+        assert entries_today(session) == []
+
+    def test_one_profile_being_full_doesnt_starve_another(self, session):
+        full = active_profile(session, name="Full", digest_target=5)
+        full.open_conversation_limit = 1
+        open_conversation(session, full, now=NOW)
+        ready_lead(session, full)
+        free = active_profile(session, name="Free", digest_target=2)
+        for _ in range(3):
+            ready_lead(session, free)
+
+        digest_tonight(session)
+
+        assert [entry.profile_id for entry in entries_today(session)] == [free.id, free.id]

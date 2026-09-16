@@ -28,6 +28,7 @@ from pipeline.research import (
 )
 from pipeline.runs import start_run
 from pipeline.web import FetchError, Page
+from tests.conversation_helpers import open_conversation
 from tests.factories import make_contact, make_curator, make_outreach, make_playlist, make_profile
 
 TODAY = date(2026, 9, 14)
@@ -463,3 +464,32 @@ class TestNightlyResearch:
             select(RunStageCount).where(RunStageCount.run_id == run.id, RunStageCount.stage == "research")
         ).one()
         assert (row.count_in, row.count_out) == (2, 1)
+
+
+class TestConversationAllowance:
+    def test_a_full_profile_is_not_researched(self, session):
+        """A profile with no room tonight shouldn't pay five cents a lead for leads it can't use."""
+        profile = active_profile(session, digest_target=5)
+        profile.open_conversation_limit = 2
+        for _ in range(2):
+            open_conversation(session, profile, now=NOW)
+        qualified_lead(session, profile, fit=0.9, description="demos@first.net")
+        agent = FakeAgent()
+
+        _, summary = research_tonight(session, agent=agent)
+
+        assert agent.leads == []
+        assert summary.researched == 0
+
+    def test_research_stops_at_the_allowance_not_the_target(self, session):
+        """Target 10, ceiling 12, 8 open: research readies 4, not 10."""
+        profile = active_profile(session, digest_target=10)
+        profile.open_conversation_limit = 12
+        for _ in range(8):
+            open_conversation(session, profile, now=NOW)
+        for number in range(6):
+            qualified_lead(session, profile, fit=0.9, description=f"demos{number}@first.net")
+
+        _, summary = research_tonight(session, agent=FakeAgent())
+
+        assert summary.reachable == 4

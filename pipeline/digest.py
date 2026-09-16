@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.contact_routes import best_contact
+from core.conversations import loads_for
 from core.exclusion import curator_is_eligible
 from core.models import (
     Confidence,
@@ -120,10 +121,17 @@ def build_digest(
     candidates = _ranked_candidates(session, today, now)
     taken = _entries_already_today(session, today)
     used_curators: set[int] = set()
+    # Worked out once, from the conversations that existed when the run started: recomputing it
+    # per candidate would be slower and harder to reason about, and nothing in the loop emails
+    # anybody, so no candidate can change the answer.
+    allowances = {
+        profile_id: load.allowance
+        for profile_id, load in loads_for(session, _active_profiles(session), now=now).items()
+    }
 
     for candidate in candidates:
         playlist, profile = candidate.playlist, candidate.profile
-        if playlist.curator_id in used_curators or taken.get(profile.id, 0) >= profile.digest_target:
+        if playlist.curator_id in used_curators or taken.get(profile.id, 0) >= allowances.get(profile.id, 0):
             continue
         brief = _write_brief(writer, _brief_request(candidate, now), summary)
         if not _add_entry(session, candidate, brief, today):
@@ -220,6 +228,12 @@ def _recency(last_add_at: datetime | None, now: datetime) -> float:
         return 0.0
     days = (now - last_add_at).total_seconds() / 86_400
     return max(0.0, 1 - days / RECENCY_WINDOW_DAYS)
+
+
+def _active_profiles(session: Session) -> list[Profile]:
+    """Every active profile, not just the ones with mail: one with no conversations at all still
+    needs an allowance, or it quietly receives nothing and the night looks like "no leads found"."""
+    return list(session.scalars(select(Profile).where(Profile.is_active.is_(True))))
 
 
 def _entries_already_today(session: Session, today: date) -> dict[int, int]:
