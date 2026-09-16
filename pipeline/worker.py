@@ -15,13 +15,17 @@ failed, so nothing is left "running" forever.
 A nightly run that fails isn't retried until the next night. A run that dies before it even
 starts (no browser, no network) is recorded as failed too, so the web app can say so and the
 loop doesn't try again every minute.
+
+Reading replies rides along on its own thread, every five minutes, deliberately outside all of
+the above: a run that takes an hour mustn't hold up the mail, and the mail failing mustn't
+fail a run.
 """
 
 import logging
 import socket
 import threading
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta, tzinfo
 from logging.handlers import RotatingFileHandler
@@ -41,6 +45,7 @@ WORKER_ROW_ID = 1
 NIGHTLY_AT = time(2, 0)
 POLL_SECONDS = 60
 BEAT_SECONDS = 30
+MAIL_EVERY_SECONDS = 300
 STALE_RUN_AFTER = timedelta(minutes=10)
 START_TOLERANCE = timedelta(minutes=1)  # the Mac's clock and the database's can differ a little
 RUN_LOCK_KEY = 7_406_311  # any fixed number, as long as every runner uses the same one
@@ -287,6 +292,31 @@ def keep_checking_in(engine: Engine, every: float = BEAT_SECONDS) -> Iterator[No
         thread.join(timeout=every)
 
 
+@contextmanager
+def keep_reading_mail(sync: Callable[[], None], every: float = MAIL_EVERY_SECONDS) -> Iterator[None]:
+    """Read replies on a background thread for as long as the runner lives.
+
+    Separate from the run loop on purpose: a nightly run can take an hour, and replies shouldn't
+    wait for it. A failure here is logged and tried again -- mail must never fail a run.
+    """
+    stop = threading.Event()
+
+    def loop() -> None:
+        while not stop.wait(every):
+            try:
+                sync()
+            except Exception:
+                logger.warning("Couldn't read the mail; will try again", exc_info=True)
+
+    thread = threading.Thread(target=loop, name="noble-hunter-mail", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=every)
+
+
 def recover_abandoned(session: Session, now: datetime, *, stale_after: timedelta = STALE_RUN_AFTER) -> int:
     """Close out work a crashed or killed runner left open. Returns how many rows were closed.
 
@@ -395,6 +425,7 @@ def run_forever(
     stop: threading.Event,
     hostname: str | None = None,
     poll_seconds: float = POLL_SECONDS,
+    sync_mail: Callable[[], None] | None = None,
 ) -> None:
     hostname = hostname or socket.gethostname()
     with Session(engine) as session:
@@ -404,21 +435,22 @@ def run_forever(
         logger.warning("Closed %s run(s) or request(s) left open by an earlier runner", closed)
     logger.info("Runner started on %s; the nightly run starts at %s", hostname, NIGHTLY_AT.strftime("%H:%M"))
 
-    while not stop.is_set():
-        try:
-            with Session(engine) as session:
-                tick(
-                    session,
-                    runner=runner,
-                    clock=lambda: datetime.now(UTC),
-                    hostname=hostname,
-                    schedule=local_schedule(),
-                    stopping=stop.is_set,
-                )
-        except Exception:
-            # Usually the network or the database is briefly away (e.g. just after the Mac wakes).
-            logger.exception("This check failed; trying again in %s seconds", poll_seconds)
-        stop.wait(poll_seconds)
+    with keep_reading_mail(sync_mail) if sync_mail else nullcontext():
+        while not stop.is_set():
+            try:
+                with Session(engine) as session:
+                    tick(
+                        session,
+                        runner=runner,
+                        clock=lambda: datetime.now(UTC),
+                        hostname=hostname,
+                        schedule=local_schedule(),
+                        stopping=stop.is_set,
+                    )
+            except Exception:
+                # Usually the network or the database is briefly away (e.g. just after the Mac wakes).
+                logger.exception("This check failed; trying again in %s seconds", poll_seconds)
+            stop.wait(poll_seconds)
     logger.info("Runner stopped")
 
 

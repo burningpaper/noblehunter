@@ -25,6 +25,19 @@ class PipelineSettings(BaseSettings):
     pipeline_database_url: SecretStr | None = None
     database_url_unpooled: SecretStr | None = None
     database_url: SecretStr | None = None
+    # Reading replies (migration 0007). Without these the runner still does everything else.
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    mail_token_key: SecretStr | None = None
+
+    def mail_problem(self) -> str | None:
+        """Why mail can't be read, or None when it can."""
+        missing = [
+            name.upper()
+            for name in ("google_client_id", "google_client_secret", "mail_token_key")
+            if getattr(self, name) is None
+        ]
+        return f"{', '.join(missing)} not set" if missing else None
 
     def sqlalchemy_url(self) -> str:
         for name in DATABASE_URL_PREFERENCE:

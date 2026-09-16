@@ -150,3 +150,29 @@ def test_worker_check_insists_on_the_anthropic_key(pipeline_env, monkeypatch, tm
 
     assert result.exit_code == 1
     assert "ANTHROPIC_API_KEY" in result.output
+
+
+def test_mail_check_says_what_is_missing(pipeline_env, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # keep the repo's own env files out of it
+    for name in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "MAIL_TOKEN_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    result = CliRunner().invoke(cli.app, ["mail", "--check"])
+
+    assert result.exit_code != 0
+    assert "MAIL_TOKEN_KEY" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_mail_check_refuses_a_key_it_cant_use(pipeline_env, monkeypatch, tmp_path):
+    """A truncated MAIL_TOKEN_KEY is present but unusable; say so instead of raising."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("MAIL_TOKEN_KEY", "not-a-fernet-key")
+
+    result = CliRunner().invoke(cli.app, ["mail"])
+
+    assert result.exit_code == 1
+    assert "MAIL_TOKEN_KEY" in result.output
+    assert "Traceback" not in result.output

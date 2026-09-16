@@ -22,12 +22,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.db_roles import create_app_roles, grant_privileges
+from core.mail_crypto import MailNotConfigured
 from core.models import Profile
 from core.profile_config import ProfileConfigError, load_profile_config
 from core.profile_import import artist_for_import, import_profile
 from core.settings import MissingSettingError, load_settings
 from pipeline.briefs import ClaudeBriefWriter
 from pipeline.fit_judge import ClaudeFitJudge, FitJudge
+from pipeline.mail import describe as describe_mail
+from pipeline.mail import sync_round
 from pipeline.nightly import Stage, describe_run, run_pipeline
 from pipeline.recheck import requeue_recent_rejections
 from pipeline.report import format_report, qualified_playlists
@@ -333,6 +336,8 @@ def worker_command(
         if check:
             if settings.anthropic_api_key is None:
                 raise fail(MISSING_ANTHROPIC_KEY)
+            problem = settings.mail_problem()
+            typer.echo("Mail: not configured." if problem else "Mail: ready.")
             with engine.connect() as connection:
                 connection.execute(text("select 1 from worker_status limit 1"))
                 connection.execute(text("select 1 from app_settings limit 1"))
@@ -363,9 +368,39 @@ def worker_command(
         stop = threading.Event()
         for signal_number in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signal_number, lambda *_: stop.set())
-        run_forever(engine, runner, stop=stop)
+        run_forever(engine, runner, stop=stop, sync_mail=lambda: sync_round(engine, settings))
     except SQLAlchemyError as error:
         raise fail(f"Database error: {describe_db_error(error)}") from None
+    finally:
+        engine.dispose()
+
+
+@app.command("mail")
+def mail_command(
+    check: Annotated[bool, typer.Option(help="Only check the mail settings, then exit.")] = False,
+) -> None:
+    """Read replies from every connected mailbox once, and put them on their digest entries."""
+    try:
+        settings = load_pipeline_settings()
+        database_url = settings.sqlalchemy_url()
+    except MissingSettingError as error:
+        raise fail(str(error)) from None
+
+    problem = settings.mail_problem()
+    if problem:
+        raise fail(f"Mail isn't configured: {problem}. See .env.example.")
+    if check:
+        typer.echo("Mail settings look good.")
+        return
+
+    engine = create_engine(database_url)
+    try:
+        typer.echo(describe_mail(sync_round(engine, settings)))
+    except MailNotConfigured as error:
+        # A key that is set but unusable (truncated, or rotated): say so, don't traceback.
+        raise fail(str(error)) from None
+    except SQLAlchemyError as error:
+        raise fail(f"Database error while reading mail: {describe_db_error(error)}") from None
     finally:
         engine.dispose()
 
