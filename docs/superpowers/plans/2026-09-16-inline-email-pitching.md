@@ -5885,23 +5885,32 @@ def test_the_night_reads_mail_in_a_fixed_number_of_queries(session):
     session.commit()
 
     statements: list[str] = []
-    with _record_statements(session, statements):
+    with record_statements(session, statements):
         digest_view(session, NIGHT, today=TODAY, viewer=admin_viewer())
 
     # Two: one for the counts, one for who spoke last. Three entries, still two -- never per entry.
     assert sum("email_messages" in statement for statement in statements) == 2
 ```
 
-For `_record_statements`, use SQLAlchemy's `before_cursor_execute` event on `session.bind`:
+`record_statements` goes in a module of its own, because Task 14 wants it too. Create `tests/query_counting.py`:
 
 ```python
+"""Counting the SQL a piece of code runs, so an N+1 shows up as a failing test.
+
+The number itself is never the point: what these tests pin is that the count doesn't grow with
+the number of rows. A page that costs two queries for three entries and two for thirty is fine;
+one that costs one per entry is the bug worth catching.
+"""
+
 import contextlib
 
 from sqlalchemy import event
 
 
 @contextlib.contextmanager
-def _record_statements(session, into: list[str]):
+def record_statements(session, into: list[str]):
+    """Collect every statement this session's engine runs while the block is open."""
+
     def record(conn, cursor, statement, parameters, context, executemany):
         into.append(statement)
 
@@ -5912,6 +5921,8 @@ def _record_statements(session, into: list[str]):
     finally:
         event.remove(engine, "before_cursor_execute", record)
 ```
+
+and import it in the test file above: `from tests.query_counting import record_statements`.
 
 Create `tests/test_run_status_mail.py`:
 
@@ -6132,12 +6143,12 @@ Append to `web/static/css/app.css`:
 
 ```css
 .tag--reply {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
 }
 ```
 
-(again: use the names this file already defines.)
+Those are the file's real tokens (a translucent accent behind the strong accent text). Earlier tasks in this plan invented names without the `--color-` prefix and had to be corrected during the build, so read the `:root` block at the top of `app.css` and use what's actually there rather than trusting any snippet.
 
 - [ ] **Step 6: Run the tests**
 
@@ -7185,13 +7196,13 @@ class TestEveryProfileAtOnce:
         session.commit()
 
         statements: list[str] = []
-        with _record_statements(session, statements):
+        with record_statements(session, statements):
             loads_for(session, [first, second], now=NOW)
 
         assert sum("email_messages" in statement for statement in statements) == 1
 ```
 
-Reuse `_record_statements` from `tests/test_digest_view_mail.py` (Task 12) — move it to `tests/query_counting.py` and import it from both, rather than copying it.
+`record_statements` already lives in `tests/query_counting.py` (Task 12) — import it, don't write another.
 
 - [ ] **Step 2: Run it to watch it fail**
 
