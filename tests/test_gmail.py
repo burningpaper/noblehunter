@@ -20,6 +20,19 @@ def token_response(expires_in: int = 3600) -> httpx.Response:
     return httpx.Response(200, json={"access_token": "ya29.access", "expires_in": expires_in})
 
 
+def failing_at(status: int, payload: dict | None = None, text: str | None = None):
+    """A handler that hands out a token, then answers every API call with the same failure."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == ACCESS_TOKEN_URL:
+            return token_response()
+        if text is not None:
+            return httpx.Response(status, text=text)
+        return httpx.Response(status, json=payload or {})
+
+    return handler
+
+
 def test_it_refreshes_once_and_reuses_the_access_token():
     calls = []
 
@@ -65,27 +78,90 @@ def test_api_failures_are_sorted_into_kinds(status, kind):
     assert error.value.kind == kind
 
 
-def test_a_rate_limit_dressed_as_403_is_transient_not_auth():
+@pytest.mark.parametrize(
+    "body",
+    [
+        {
+            "error": {
+                "code": 403,
+                "errors": [{"reason": "userRateLimitExceeded"}],
+                "status": "RESOURCE_EXHAUSTED",
+            }
+        },
+        {"error": {"code": 403, "errors": [{"reason": "rateLimitExceeded"}]}},
+        {"error": {"code": 403, "errors": [{"reason": "quotaExceeded"}]}},
+    ],
+)
+def test_a_rate_limit_dressed_as_403_is_transient_not_auth(body):
     # Gmail answers 403 for "slow down" as well as "no". Calling this `auth` would flag the
     # mailbox as needing reconnection, and nothing clears that but reconnecting through Google.
-    def handler(request: httpx.Request) -> httpx.Response:
-        if str(request.url) == ACCESS_TOKEN_URL:
-            return token_response()
-        return httpx.Response(
-            403,
-            json={
-                "error": {
-                    "code": 403,
-                    "errors": [{"reason": "userRateLimitExceeded"}],
-                    "status": "RESOURCE_EXHAUSTED",
-                }
-            },
-        )
-
+    # Checked before the configuration reasons, so a busy mailbox never reads as a broken project.
     with pytest.raises(GmailError) as error:
-        gmail(handler).profile()
+        gmail(failing_at(403, body)).profile()
 
     assert error.value.kind == "transient"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {
+            "error": {
+                "code": 403,
+                "errors": [{"reason": "accessNotConfigured"}],
+                "status": "PERMISSION_DENIED",
+            }
+        },
+        {"error": {"code": 403, "status": "SERVICE_DISABLED"}},
+    ],
+)
+def test_an_api_that_was_never_switched_on_is_a_config_error(body):
+    # The first real mailbox failed exactly this way: the Gmail API had never been enabled for
+    # the Google project, and the app answered "reconnect the mailbox" -- which cannot help.
+    with pytest.raises(GmailError) as error:
+        gmail(failing_at(403, body)).profile()
+
+    assert error.value.kind == "config"
+    assert "Gmail API" in str(error.value)
+    assert "enabled" in str(error.value)
+
+
+def test_a_token_missing_a_scope_is_a_config_error_that_names_the_scope():
+    body = {
+        "error": {
+            "code": 403,
+            "errors": [{"reason": "insufficientPermissions"}],
+            "status": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+        }
+    }
+
+    with pytest.raises(GmailError) as error:
+        gmail(failing_at(403, body)).profile()
+
+    assert error.value.kind == "config"
+    assert "scope" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"error": {"code": 403, "errors": [{"reason": "forbidden"}], "status": "PERMISSION_DENIED"}},
+        {"error": {"message": "nope"}},
+        {},
+    ],
+)
+def test_a_403_naming_no_reason_we_know_is_still_auth(body):
+    with pytest.raises(GmailError) as error:
+        gmail(failing_at(403, body)).profile()
+
+    assert error.value.kind == "auth"
+
+
+def test_a_403_with_no_readable_body_is_still_auth():
+    with pytest.raises(GmailError) as error:
+        gmail(failing_at(403, text="<html>a proxy said no</html>")).profile()
+
+    assert error.value.kind == "auth"
 
 
 def test_a_network_failure_is_transient_and_names_no_token():

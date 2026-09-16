@@ -58,7 +58,10 @@ def sync_mailbox(session: Session, mailbox: MailAccount, gmail, *, now: datetime
             payload = gmail.message(message_id)
             _store(session, mailbox, outreach_id, payload)
         except GmailError as error:
-            if error.kind == "auth":
+            if error.kind in ("auth", "config"):
+                # Neither gets better on the next message: the token is refused, or the project
+                # is. Carrying on would count the whole mailbox as "ignored" and report a clean
+                # round, which is how a broken setup stays invisible.
                 return _failed(session, mailbox, error, outcome)
             logger.warning("Couldn't read message %s: %s", message_id, error)
             outcome.ignored += 1
@@ -71,7 +74,9 @@ def sync_mailbox(session: Session, mailbox: MailAccount, gmail, *, now: datetime
 
     mailbox.history_id = new_history_id
     mailbox.last_checked_at = now
-    if mailbox.needs_reconnect:
+    # Not `if needs_reconnect`: a config failure records `last_error` without raising the flag,
+    # and a stale sentence about a Google project that has since been fixed shouldn't outlive it.
+    if mailbox.needs_reconnect or mailbox.last_error:
         mailbox.needs_reconnect, mailbox.last_error = False, None
     session.flush()
     return outcome
@@ -169,6 +174,12 @@ def _failed(session: Session, mailbox: MailAccount, error: GmailError, outcome: 
     """Record what went wrong. Auth failures need a person; anything else will be tried again."""
     if error.kind == "auth":
         mark_needs_reconnect(session, mailbox, RECONNECT_MESSAGE)
+    elif error.kind == "config":
+        # The app's Google project is wrong, not this mailbox. Keep what Gmail said on the row so
+        # it isn't only in a log line, but leave `needs_reconnect` alone: nothing clears that flag
+        # but a person completing Google's consent flow, and consent can't switch an API on.
+        mailbox.last_error = str(error)
+        session.flush()
     outcome.error = str(error)
     return outcome
 

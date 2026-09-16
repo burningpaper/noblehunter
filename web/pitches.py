@@ -59,6 +59,10 @@ BAD_ADDRESS = (
 NO_MAILBOX = "This profile isn't pitching from a mailbox yet. Connect one on the profile page."
 NO_WRITER = "Drafting with Claude needs ANTHROPIC_API_KEY. You can still write the pitch yourself."
 RECONNECT = "Google refused this mailbox. Reconnect it on the profile page, then send again."
+SETUP_PROBLEM = (
+    "Nothing was sent: this is a setup problem with the app's Google project, not with your "
+    "mailbox. Reconnecting it or trying again won't fix it."
+)
 SENT = "Sent."
 
 
@@ -192,9 +196,19 @@ def send(
             mark_needs_reconnect(db, mailbox, str(error))
             db.commit()
         logger.warning("Sending a pitch failed (%s)", error.kind)
-        message = RECONNECT if error.kind == "auth" else "Gmail couldn't send that. Try again shortly."
-        return _panel(request, db, outreach, subject=subject, body=body, error=message)
+        return _panel(request, db, outreach, subject=subject, body=body, error=_send_failure(error))
     return _panel(request, db, outreach, notice=SENT, swap_status=True)
+
+
+def _send_failure(error: GmailError) -> str:
+    """What to tell the person, by what Gmail actually refused."""
+    if error.kind == "auth":
+        return RECONNECT
+    if error.kind == "config":
+        # Gmail's own sentence names the setting that's wrong -- the API switched off, or a
+        # missing scope -- and carries no address or token, so it's safe to show as it is.
+        return f"{SETUP_PROBLEM} {error}"
+    return "Gmail couldn't send that. Try again shortly."
 
 
 def _panel(

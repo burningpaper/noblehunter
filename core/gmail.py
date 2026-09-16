@@ -7,6 +7,8 @@ swaps it for a short-lived access token, and keeps that in memory until it expir
 Failures come back as `GmailError` with a `kind` the caller acts on:
 
 - `auth`: Google refused the token. The mailbox needs reconnecting; nothing will fix itself.
+- `config`: the app's own Google Cloud project is wrong -- the Gmail API switched off, or a token
+  issued without a scope the call needs. No mailbox is broken, so reconnecting one changes nothing.
 - `transient`: rate limit, server error or network. Worth trying again later.
 - `rejected`: Gmail understood and said no (a malformed message, a missing thread).
 - `history-gone`: the mailbox's history id is too old, so the caller re-reads whole threads.
@@ -28,10 +30,15 @@ TOKEN_EARLY_REFRESH_SECONDS = 60  # refresh a little before Google's expiry, to 
 RATE_LIMIT_REASONS = frozenset(
     {"ratelimitexceeded", "userratelimitexceeded", "quotaexceeded", "resource_exhausted"}
 )
+# The reasons Google gives when a 403 is about the app's Google Cloud project rather than this
+# mailbox: the API never switched on, or a token issued without the scope the call needs.
+API_DISABLED_REASONS = frozenset({"accessnotconfigured", "service_disabled", "servicedisabled"})
+SCOPE_REASONS = frozenset({"insufficientpermissions", "access_token_scope_insufficient"})
+CONFIG_REASONS = API_DISABLED_REASONS | SCOPE_REASONS
 
 
 class GmailError(RuntimeError):
-    """Gmail couldn't do it. `kind` is auth, transient, rejected or history-gone."""
+    """Gmail couldn't do it. `kind` is auth, config, transient, rejected or history-gone."""
 
     def __init__(self, kind: str, message: str):
         super().__init__(message)
@@ -149,6 +156,10 @@ class Gmail:
         if kind == "auth":
             # Google has refused the token we hold; don't keep presenting it until it expires.
             self._token = None
+        if kind == "config":
+            # "Gmail said 403 to profile" is true and useless: it sent the first person to
+            # reconnect a mailbox that was never broken. Name the setting that is wrong instead.
+            raise GmailError(kind, _config_message(response))
         raise GmailError(kind, f"Gmail said {response.status_code} to {_what(url)}")
 
 
@@ -169,6 +180,11 @@ def _kind(response: httpx.Response, url: str) -> str:
         # handling: this one clears by itself, while `auth` flags the mailbox as needing a person
         # to reconnect it -- and nothing clears that flag but reconnecting through Google.
         return "transient"
+    if response.status_code == 403 and _is_config(response):
+        # Not the token: the app's own Google project. Reconnecting a mailbox cannot switch an API
+        # on or widen a scope, and calling this `auth` both demands exactly that and leaves
+        # `needs_reconnect` -- which only a completed consent flow clears -- on a working mailbox.
+        return "config"
     if response.status_code in (401, 403):
         return "auth"
     if response.status_code == 404 and "/history" in url:
@@ -178,17 +194,47 @@ def _kind(response: httpx.Response, url: str) -> str:
     return "rejected"
 
 
+def _reasons(response: httpx.Response) -> set[str]:
+    """Every reason Google named in an error body, lowercased.
+
+    Google says the same thing in two places -- `error.errors[].reason` and `error.status` -- and
+    which one arrives varies by API, so read both. A body that can't be read names no reason at
+    all, which is the honest answer: an unrecognised 403 stays `auth`.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        return set()
+    error = payload.get("error", {}) if isinstance(payload, dict) else {}
+    if not isinstance(error, dict):
+        return set()
+    listed = error.get("errors", []) or []
+    reasons = {str(item.get("reason", "")).lower() for item in listed if isinstance(item, dict)}
+    reasons.add(str(error.get("status", "")).lower())
+    return reasons
+
+
 def _is_rate_limit(response: httpx.Response) -> bool:
     """Whether a 403 is Google saying "slow down" rather than "no"."""
-    try:
-        error = response.json().get("error", {})
-    except ValueError:
-        return False
-    if not isinstance(error, dict):
-        return False
-    reasons = {str(item.get("reason", "")).lower() for item in error.get("errors", []) or []}
-    reasons.add(str(error.get("status", "")).lower())
-    return bool(reasons & RATE_LIMIT_REASONS)
+    return bool(_reasons(response) & RATE_LIMIT_REASONS)
+
+
+def _is_config(response: httpx.Response) -> bool:
+    """Whether a 403 is about how the app's Google project is set up, not this mailbox's token."""
+    return bool(_reasons(response) & CONFIG_REASONS)
+
+
+def _config_message(response: httpx.Response) -> str:
+    """What is actually wrong and where to fix it -- neither of these is fixed by reconnecting."""
+    if _reasons(response) & SCOPE_REASONS:
+        return (
+            "Gmail refused the call: this app's Gmail access is missing a scope. Check the scopes "
+            "on the Google Cloud project, then connect the mailbox again to pick up the new ones."
+        )
+    return (
+        "Gmail refused the call: the Gmail API isn't enabled for this app's Google Cloud project. "
+        "Switch it on there -- reconnecting the mailbox won't help."
+    )
 
 
 def _what(url: str) -> str:

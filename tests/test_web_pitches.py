@@ -350,6 +350,32 @@ class TestSending:
         assert "Reconnect" in response.text
         assert session.get(Outreach, outreach.id).status == OutreachStatus.NEW
 
+    def test_a_setup_problem_says_so_instead_of_asking_for_a_reconnect(self, session, mail_settings):
+        # Reconnecting cannot enable an API in someone's Google project, so telling the person to
+        # reconnect leaves them pressing the same button forever. Say where the problem really is.
+        outreach = a_digest_entry(session)
+        mailbox_id = outreach.profile.mail_account_id
+        gmail = FakeGmailSender(
+            error=GmailError("config", "The Gmail API is not enabled for this Google Cloud project")
+        )
+        client = a_client(session, settings=mail_settings, gmail=gmail)
+        send_key = _send_key(client, outreach.id)
+
+        response = post(
+            client,
+            f"/outreach/{outreach.id}/pitch/send",
+            {"subject": "Kelvin", "body": "Hi Nina", "send_key": send_key},
+        )
+
+        assert response.status_code == 200
+        assert "Google project" in response.text
+        assert "Gmail API" in response.text  # the cause Gmail named, not a generic apology
+        assert "Reconnect it on the profile page" not in response.text
+        assert "Try again shortly" not in response.text
+        assert session.get(Outreach, outreach.id).status == OutreachStatus.NEW
+        # The mailbox is fine; only a person reconnecting clears this flag, so it must stay off.
+        assert session.get(MailAccount, mailbox_id).needs_reconnect is False
+
     def test_pressing_send_twice_sends_once(self, session, mail_settings):
         outreach = a_digest_entry(session)
         gmail = FakeGmailSender()

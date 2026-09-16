@@ -46,12 +46,15 @@ def gmail_message(
 class FakeGmail:
     """Stands in for one mailbox's Gmail: canned history, messages and threads."""
 
-    def __init__(self, history=(), messages=None, threads=None, history_id="2000", error=None):
+    def __init__(
+        self, history=(), messages=None, threads=None, history_id="2000", error=None, message_error=None
+    ):
         self.history = list(history)
         self.messages = messages or {}
         self.threads = threads or {}
         self.new_history_id = history_id
         self.error = error
+        self.message_error = message_error
         self.history_calls: list[str] = []
         self.fetched: list[str] = []
 
@@ -63,6 +66,8 @@ class FakeGmail:
 
     def message(self, message_id: str) -> dict:
         self.fetched.append(message_id)
+        if self.message_error:
+            raise self.message_error
         return self.messages[message_id]
 
     def thread(self, thread_id: str) -> dict:
@@ -191,6 +196,36 @@ class TestWhenGmailSaysNo:
         assert mailbox.needs_reconnect is True
         assert outcome.error
         assert mailbox.history_id == "1000"  # unchanged, so nothing is skipped after reconnecting
+
+    def test_a_setup_problem_is_recorded_without_demanding_a_reconnect(self, session):
+        # The Gmail API being switched off for the Google project is not this mailbox's fault,
+        # and nothing clears `needs_reconnect` but a person completing Google's consent flow. A
+        # flag here would outlast the problem and send someone round that flow for nothing.
+        _outreach, mailbox = a_pitched_entry(session)
+        gmail = FakeGmail(error=GmailError("config", "The Gmail API isn't enabled for the project"))
+
+        outcome = sync_mailbox(session, mailbox, gmail, now=NOW)
+
+        assert mailbox.needs_reconnect is False
+        assert outcome.error
+        assert mailbox.last_error == "The Gmail API isn't enabled for the project"
+        assert mailbox.history_id == "1000"  # unchanged, so nothing is skipped once it's enabled
+
+    def test_a_setup_problem_reading_a_message_stops_the_round(self, session):
+        # Mid-round it is no different: every later call fails the same way, so carrying on just
+        # counts the whole mailbox as "ignored" and reports a clean round.
+        _outreach, mailbox = a_pitched_entry(session)
+        gmail = FakeGmail(
+            history=[("reply1", "thread1")],
+            message_error=GmailError("config", "The Gmail API isn't enabled for the project"),
+        )
+
+        outcome = sync_mailbox(session, mailbox, gmail, now=NOW)
+
+        assert outcome.error
+        assert (outcome.stored, outcome.ignored) == (0, 0)
+        assert mailbox.needs_reconnect is False
+        assert mailbox.history_id == "1000"
 
     def test_a_transient_failure_changes_nothing(self, session):
         _outreach, mailbox = a_pitched_entry(session)
