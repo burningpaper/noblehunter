@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from core.gmail import GmailError
 from core.models import EmailMessage, MailDirection, Outreach, OutreachStatus
-from core.pitch_writer import PitchWriterError
+from core.pitch_writer import PitchWriterError, template_pitch
 from tests.factories import (
     make_artist,
     make_contact,
@@ -23,12 +23,23 @@ from tests.factories import (
     make_profile,
     make_user,
 )
-from tests.web_helpers import FakeGmailSender, FakePitchWriter, csrf_token, member_client, web_settings
+from tests.web_helpers import (
+    FakeGmailSender,
+    FakeGoogle,
+    FakePitchWriter,
+    app_client,
+    csrf_token,
+    member_client,
+    sign_in,
+    web_settings,
+)
 
 KEY = Fernet.generate_key().decode()
 NIGHT = date(2026, 9, 16)
 HTML = {"accept": "text/html"}
 EMAIL = "nina@broken-machines.com"
+SENDER = "burningpaper@gmail.com"
+LOCAL_PART = "burningpaper"
 
 
 @pytest.fixture
@@ -38,10 +49,10 @@ def mail_settings():
     return web_settings().model_copy(update={"mail_token_key": SecretStr(KEY)})
 
 
-def a_digest_entry(session, *, with_mailbox=True, with_email=True):
+def a_digest_entry(session, *, with_mailbox=True, with_email=True, member_email="nik@example.com"):
     artist = make_artist(session, "Synman")
     profile = make_profile(session, "IDM Playlists", artist=artist)
-    make_member(session, artist, make_user(session, "nik@example.com"))
+    make_member(session, artist, make_user(session, member_email))
     curator = make_curator(session, display_name="Nina")
     if with_email:
         make_contact(session, curator, "email", EMAIL)
@@ -61,6 +72,26 @@ def a_client(session, *, settings, gmail=None, writer=None):
         pitch_writer=writer or FakePitchWriter(),
         gmail_for=lambda mailbox, cipher, app_settings, http: gmail or FakeGmailSender(),
     )
+
+
+def _client_signed_in_as(session, name, *, settings, writer):
+    """A client signed in as SENDER, whom Google calls `name`.
+
+    Not `member_client`: signing in is what writes `users.name`, so the name Google reports is
+    the only way a test can choose whether the signed-in person has a name on file at all.
+    """
+    google = FakeGoogle()
+    google.userinfo["email"] = SENDER
+    google.userinfo["name"] = name
+    client = app_client(
+        session,
+        google,
+        settings=settings,
+        pitch_writer=writer,
+        gmail_for=lambda mailbox, cipher, app_settings, http: FakeGmailSender(),
+    )
+    sign_in(client)
+    return client
 
 
 def post(client, path, data):
@@ -180,6 +211,51 @@ class TestAskingClaude:
 
         assert "ANTHROPIC_API_KEY" in html
         assert 'hx-post="/outreach' in html  # saving and sending still work
+
+
+class TestWhoTheDraftSignsAs:
+    """What the route tells Claude to sign the letter as.
+
+    These assert on the request the *route* built, not on a hand-made one. That gap is what let
+    the route send an email address's local part -- "burningpaper" -- to a real curator while
+    `tests/test_pitch_writer.py`, which passes a human name, stayed green.
+    """
+
+    def test_the_signed_in_persons_name_is_who_it_signs_as(self, session, mail_settings):
+        outreach = a_digest_entry(session, member_email=SENDER)
+        writer = FakePitchWriter()
+        client = _client_signed_in_as(session, "Jarred Cinman", settings=mail_settings, writer=writer)
+
+        post(client, f"/outreach/{outreach.id}/pitch/write", {"instruction": "go"})
+
+        assert writer.calls[0].sender_name == "Jarred Cinman"
+
+    def test_with_no_name_on_file_the_pitch_signs_as_the_artist(self, session, mail_settings):
+        # Google doesn't always send a name, so `users.name` can be null. Nothing is the right
+        # answer here: it's what lets pitch_writer's `or artist` sign as Synman, which is a true
+        # thing for a musician's cold pitch to say -- and better than a guess at his real name.
+        outreach = a_digest_entry(session, member_email=SENDER)
+        writer = FakePitchWriter()
+        client = _client_signed_in_as(session, "", settings=mail_settings, writer=writer)
+
+        post(client, f"/outreach/{outreach.id}/pitch/write", {"instruction": "go"})
+
+        assert writer.calls[0].sender_name is None
+        assert template_pitch(writer.calls[0]).body.strip().endswith("Synman")
+
+    def test_an_email_fragment_never_reaches_the_curator(self, session, mail_settings):
+        # The fallback draft is the least supervised text this feature can produce: it is used
+        # precisely when Claude has already failed, and it goes out over Jarred's own name.
+        outreach = a_digest_entry(session, member_email=SENDER)
+        writer = FakePitchWriter()
+        client = _client_signed_in_as(session, "", settings=mail_settings, writer=writer)
+
+        post(client, f"/outreach/{outreach.id}/pitch/write", {"instruction": "go"})
+
+        fallback = template_pitch(writer.calls[0])
+        assert LOCAL_PART not in repr(writer.calls[0])  # nowhere in what the writer was handed
+        assert LOCAL_PART not in fallback.body
+        assert LOCAL_PART not in fallback.subject
 
 
 class TestSaving:

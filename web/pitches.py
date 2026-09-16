@@ -18,6 +18,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,7 +27,7 @@ from core.digest_view import entry_view
 from core.gmail import GmailError
 from core.mail_crypto import MailNotConfigured
 from core.mailboxes import MailboxProblem, mark_needs_reconnect
-from core.models import MailAccount, Outreach, ProfileTrack
+from core.models import MailAccount, Outreach, ProfileTrack, User
 from core.pitch_writer import PitchRequest, PitchWriterError
 from core.pitches import (
     PitchProblem,
@@ -264,6 +265,20 @@ def _track_id_or_none(outreach: Outreach, raw: str) -> int | None:
     return track.id if track is not None else None
 
 
+def _sender_name(db: Session, viewer: Viewer) -> str | None:
+    """The name the signed-in person signs the letter with, or nothing at all.
+
+    Never the local part of their email. "burningpaper" is an address, not a name, and it used
+    to sign every draft -- including the plain fallback used when Claude has already failed,
+    which is the least supervised text this feature can put in front of a curator. Nothing is
+    the better answer: `pitch_writer` then signs as the artist instead, which is a true thing
+    for a musician's cold pitch to say. `users.name` comes from Google at sign-in and may be
+    null, so `None` is a normal result, not an error. `viewer.email` is already lowercased to
+    match the column.
+    """
+    return db.scalar(select(User.name).where(User.email == viewer.email))
+
+
 def _pitch_request(
     db: Session, outreach: Outreach, instruction: str, body: str, track: ProfileTrack | None, viewer: Viewer
 ) -> PitchRequest:
@@ -279,7 +294,7 @@ def _pitch_request(
         angle=outreach.suggested_angle,  # typed `str | None`, so this one may stay as it is
         reference_artists=tuple(artist.display_name for artist in profile.reference_artists),
         tracks=tracks,
-        sender_name=viewer.email.split("@", 1)[0],
+        sender_name=_sender_name(db, viewer),
         instruction=instruction,
         previous_body=body,
     )

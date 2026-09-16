@@ -59,7 +59,7 @@ class PitchRequest:
     angle: str | None
     reference_artists: tuple[str, ...]
     tracks: tuple[tuple[str, str], ...]  # (title, one line on how it sounds)
-    sender_name: str
+    sender_name: str | None  # the sender's own name, if we know one -- see web/pitches.py
     instruction: str
     previous_body: str
 
