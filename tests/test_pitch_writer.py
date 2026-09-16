@@ -144,6 +144,15 @@ class TestAsking:
 
         assert len(writer.write(REQUEST).subject) <= 200
 
+    def test_a_request_carrying_nothing_still_reaches_claude(self):
+        # These fields come from nullable columns. Building the question happens outside the try
+        # that makes a PitchWriterError, so a None here would escape as a bare AttributeError.
+        writer, messages = writer_with(json.dumps({"subject": "S", "body": "B"}))
+
+        writer.write(replace(REQUEST, angle=None, instruction=None, previous_body=None))
+
+        assert "None" not in messages.calls[0]["messages"][0]["content"]
+
 
 class TestThePlainDraft:
     def test_it_names_the_playlist_the_curator_and_a_track(self):
@@ -175,3 +184,28 @@ class TestThePlainDraft:
 
         assert "Broken Machines" in pitch.body
         assert "Hi there" in pitch.body
+
+    def test_it_survives_a_request_full_of_nothing(self):
+        # This is the draft used when Claude has already failed. It must not fail too, and a
+        # nullable column arriving as None must never print the word "None" at a curator.
+        empty = PitchRequest(
+            artist_name="Synman",
+            profile_name=None,
+            curator_name=None,
+            playlist_name="Broken Machines",
+            playlist_url=None,
+            brief=None,
+            angle=None,
+            reference_artists=(),
+            tracks=((None, None),),
+            sender_name=None,
+            instruction=None,
+            previous_body=None,
+        )
+
+        pitch = template_pitch(empty)
+
+        assert "Broken Machines" in pitch.body
+        assert "Synman" in pitch.body
+        assert "None" not in pitch.body
+        assert "None" not in pitch.subject

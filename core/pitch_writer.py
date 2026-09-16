@@ -111,54 +111,75 @@ class ClaudePitchWriter:
 
 def template_pitch(request: PitchRequest) -> Pitch:
     """A plain draft from the facts alone, for when Claude can't write one."""
-    greeting = f"Hi {request.curator_name}," if request.curator_name else "Hi there,"
+    artist = _text(request.artist_name)
+    signature = _text(request.sender_name) or artist
+    greeting = f"Hi {_text(request.curator_name)}," if request.curator_name else "Hi there,"
     track_title, track_sound = request.tracks[0] if request.tracks else ("", "")
-    track = f"“{track_title}”" if track_title else "a new track"
+    track = f"“{_text(track_title)}”" if track_title else "a new track"
     lines = [
         greeting,
         "",
-        f"I'm {request.sender_name or request.artist_name}, and I make music as {request.artist_name}. "
-        f"I came across “{request.playlist_name}” and thought {track} might suit it.",
+        f"I'm {signature}, and I make music as {artist}. "
+        f"I came across “{_text(request.playlist_name)}” and thought {track} might suit it.",
     ]
     if track_sound:
-        lines.append(track_sound.rstrip(".") + ".")
+        lines.append(_text(track_sound).rstrip(".") + ".")
     if request.reference_artists:
-        lines.append(f"It sits close to {', '.join(request.reference_artists)}.")
+        lines.append(f"It sits close to {_join(request.reference_artists)}.")
     lines += [
         "",
-        request.playlist_url,
+        _text(request.playlist_url),
         "",
         "No problem at all if it's not right for the playlist -- thanks for listening either way.",
         "",
-        request.sender_name or request.artist_name,
+        signature,
     ]
-    subject = f"{track_title or request.artist_name} for {request.playlist_name}"
+    subject = f"{_text(track_title) or artist} for {_text(request.playlist_name)}"
     return Pitch(subject=subject[:MAX_SUBJECT_LENGTH], body="\n".join(lines))
 
 
 def _question(request: PitchRequest) -> str:
-    tracks = "; ".join(f"{title} ({sound})" if sound else title for title, sound in request.tracks)
+    tracks = "; ".join(
+        f"{_text(title)} ({_text(sound)})" if sound else _text(title) for title, sound in request.tracks
+    )
     parts = [
-        f"The musician: {request.artist_name} (profile: {request.profile_name})",
-        f"They sign off as: {request.sender_name or request.artist_name}",
+        f"The musician: {_text(request.artist_name)} (profile: {_text(request.profile_name)})",
+        f"They sign off as: {_text(request.sender_name) or _text(request.artist_name)}",
         f"Their tracks: {tracks or 'none listed'}",
-        f"Artists their music sits next to: {', '.join(request.reference_artists) or 'none listed'}",
+        f"Artists their music sits next to: {_join(request.reference_artists) or 'none listed'}",
         "",
-        f"The curator: {request.curator_name or 'name unknown'}",
-        f"The playlist: {request.playlist_name}",
-        f"Spotify link: {request.playlist_url}",
-        f"What we know about it: {request.brief or 'nothing beyond the name'}",
-        f"Suggested angle: {request.angle or 'none'}",
+        f"The curator: {_text(request.curator_name) or 'name unknown'}",
+        f"The playlist: {_text(request.playlist_name)}",
+        f"Spotify link: {_text(request.playlist_url)}",
+        f"What we know about it: {_text(request.brief) or 'nothing beyond the name'}",
+        f"Suggested angle: {_text(request.angle) or 'none'}",
     ]
-    if request.previous_body.strip():
+    previous = _text(request.previous_body).strip()
+    if previous:
         parts += [
             "",
             "This is the current draft. Rewrite it, keeping anything the musician clearly wants kept:",
-            request.previous_body.strip()[:MAX_BODY_LENGTH],
+            previous[:MAX_BODY_LENGTH],
         ]
-    instruction = " ".join(request.instruction.split())[:MAX_INSTRUCTION_LENGTH]
+    instruction = " ".join(_text(request.instruction).split())[:MAX_INSTRUCTION_LENGTH]
     parts += ["", f"What the musician asked for: {instruction or 'write the first draft'}"]
     return "\n".join(parts)
+
+
+def _text(value: object) -> str:
+    """Whatever arrived, as a string.
+
+    Every `PitchRequest` field is typed `str`, and callers should send one. But these two
+    functions run *outside* the try that turns trouble into `PitchWriterError`, and one of them
+    is the fallback used when Claude has already failed -- so a `None` from a nullable column
+    (an unset angle, a track with no description, an empty draft) must not raise here, of all
+    places. The caller coercing at its boundary is still the better fix; this is the seatbelt.
+    """
+    return str(value) if value else ""
+
+
+def _join(values) -> str:
+    return ", ".join(_text(value) for value in values if value)
 
 
 def _parse(response) -> tuple[str, str]:

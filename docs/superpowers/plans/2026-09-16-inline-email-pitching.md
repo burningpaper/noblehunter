@@ -3022,6 +3022,16 @@ class TestAsking:
         assert len(writer.write(REQUEST).subject) <= 200
 
 
+    def test_a_request_carrying_nothing_still_reaches_claude(self):
+        # These fields come from nullable columns. Building the question happens outside the try
+        # that makes a PitchWriterError, so a None here would escape as a bare AttributeError.
+        writer, messages = writer_with(json.dumps({"subject": "S", "body": "B"}))
+
+        writer.write(replace(REQUEST, angle=None, instruction=None, previous_body=None))
+
+        assert "None" not in messages.calls[0]["messages"][0]["content"]
+
+
 class TestThePlainDraft:
     def test_it_names_the_playlist_the_curator_and_a_track(self):
         pitch = template_pitch(REQUEST)
@@ -3052,6 +3062,31 @@ class TestThePlainDraft:
 
         assert "Broken Machines" in pitch.body
         assert "Hi there" in pitch.body
+
+    def test_it_survives_a_request_full_of_nothing(self):
+        # This is the draft used when Claude has already failed. It must not fail too, and a
+        # nullable column arriving as None must never print the word "None" at a curator.
+        empty = PitchRequest(
+            artist_name="Synman",
+            profile_name=None,
+            curator_name=None,
+            playlist_name="Broken Machines",
+            playlist_url=None,
+            brief=None,
+            angle=None,
+            reference_artists=(),
+            tracks=((None, None),),
+            sender_name=None,
+            instruction=None,
+            previous_body=None,
+        )
+
+        pitch = template_pitch(empty)
+
+        assert "Broken Machines" in pitch.body
+        assert "Synman" in pitch.body
+        assert "None" not in pitch.body
+        assert "None" not in pitch.subject
 ```
 
 - [ ] **Step 2: Run it to watch it fail**
@@ -3176,54 +3211,75 @@ class ClaudePitchWriter:
 
 def template_pitch(request: PitchRequest) -> Pitch:
     """A plain draft from the facts alone, for when Claude can't write one."""
-    greeting = f"Hi {request.curator_name}," if request.curator_name else "Hi there,"
+    artist = _text(request.artist_name)
+    signature = _text(request.sender_name) or artist
+    greeting = f"Hi {_text(request.curator_name)}," if request.curator_name else "Hi there,"
     track_title, track_sound = request.tracks[0] if request.tracks else ("", "")
-    track = f"“{track_title}”" if track_title else "a new track"
+    track = f"“{_text(track_title)}”" if track_title else "a new track"
     lines = [
         greeting,
         "",
-        f"I'm {request.sender_name or request.artist_name}, and I make music as {request.artist_name}. "
-        f"I came across “{request.playlist_name}” and thought {track} might suit it.",
+        f"I'm {signature}, and I make music as {artist}. "
+        f"I came across “{_text(request.playlist_name)}” and thought {track} might suit it.",
     ]
     if track_sound:
-        lines.append(track_sound.rstrip(".") + ".")
+        lines.append(_text(track_sound).rstrip(".") + ".")
     if request.reference_artists:
-        lines.append(f"It sits close to {', '.join(request.reference_artists)}.")
+        lines.append(f"It sits close to {_join(request.reference_artists)}.")
     lines += [
         "",
-        request.playlist_url,
+        _text(request.playlist_url),
         "",
         "No problem at all if it's not right for the playlist -- thanks for listening either way.",
         "",
-        request.sender_name or request.artist_name,
+        signature,
     ]
-    subject = f"{track_title or request.artist_name} for {request.playlist_name}"
+    subject = f"{_text(track_title) or artist} for {_text(request.playlist_name)}"
     return Pitch(subject=subject[:MAX_SUBJECT_LENGTH], body="\n".join(lines))
 
 
 def _question(request: PitchRequest) -> str:
-    tracks = "; ".join(f"{title} ({sound})" if sound else title for title, sound in request.tracks)
+    tracks = "; ".join(
+        f"{_text(title)} ({_text(sound)})" if sound else _text(title) for title, sound in request.tracks
+    )
     parts = [
-        f"The musician: {request.artist_name} (profile: {request.profile_name})",
-        f"They sign off as: {request.sender_name or request.artist_name}",
+        f"The musician: {_text(request.artist_name)} (profile: {_text(request.profile_name)})",
+        f"They sign off as: {_text(request.sender_name) or _text(request.artist_name)}",
         f"Their tracks: {tracks or 'none listed'}",
-        f"Artists their music sits next to: {', '.join(request.reference_artists) or 'none listed'}",
+        f"Artists their music sits next to: {_join(request.reference_artists) or 'none listed'}",
         "",
-        f"The curator: {request.curator_name or 'name unknown'}",
-        f"The playlist: {request.playlist_name}",
-        f"Spotify link: {request.playlist_url}",
-        f"What we know about it: {request.brief or 'nothing beyond the name'}",
-        f"Suggested angle: {request.angle or 'none'}",
+        f"The curator: {_text(request.curator_name) or 'name unknown'}",
+        f"The playlist: {_text(request.playlist_name)}",
+        f"Spotify link: {_text(request.playlist_url)}",
+        f"What we know about it: {_text(request.brief) or 'nothing beyond the name'}",
+        f"Suggested angle: {_text(request.angle) or 'none'}",
     ]
-    if request.previous_body.strip():
+    previous = _text(request.previous_body).strip()
+    if previous:
         parts += [
             "",
             "This is the current draft. Rewrite it, keeping anything the musician clearly wants kept:",
-            request.previous_body.strip()[:MAX_BODY_LENGTH],
+            previous[:MAX_BODY_LENGTH],
         ]
-    instruction = " ".join(request.instruction.split())[:MAX_INSTRUCTION_LENGTH]
+    instruction = " ".join(_text(request.instruction).split())[:MAX_INSTRUCTION_LENGTH]
     parts += ["", f"What the musician asked for: {instruction or 'write the first draft'}"]
     return "\n".join(parts)
+
+
+def _text(value: object) -> str:
+    """Whatever arrived, as a string.
+
+    Every `PitchRequest` field is typed `str`, and callers should send one. But these two
+    functions run *outside* the try that turns trouble into `PitchWriterError`, and one of them
+    is the fallback used when Claude has already failed -- so a `None` from a nullable column
+    (an unset angle, a track with no description, an empty draft) must not raise here, of all
+    places. The caller coercing at its boundary is still the better fix; this is the seatbelt.
+    """
+    return str(value) if value else ""
+
+
+def _join(values) -> str:
+    return ", ".join(_text(value) for value in values if value)
 
 
 def _parse(response) -> tuple[str, str]:
@@ -3253,7 +3309,7 @@ The repo already has this pattern in `tests/test_suggestions_live.py` and `tests
 ```python
 """One real call to Claude, to read what it actually writes. Skipped unless asked for.
 
-Run it with: NOBLE_HUNTER_LIVE=1 uv run pytest tests/test_pitch_writer_live.py -q -s
+Run it with: uv run pytest tests/test_pitch_writer_live.py -q -s --run-live
 """
 
 import os
@@ -3263,12 +3319,11 @@ import pytest
 from core.pitch_writer import ClaudePitchWriter
 from tests.test_pitch_writer import REQUEST
 
-live = pytest.mark.skipif(
-    not os.environ.get("NOBLE_HUNTER_LIVE"), reason="set NOBLE_HUNTER_LIVE=1 to call Claude for real"
-)
+# The repo's own mechanism, shared with test_suggestions_live.py and test_spotify_live.py:
+# conftest skips anything marked `live` unless --run-live is passed.
+pytestmark = pytest.mark.live
 
 
-@live
 def test_claude_writes_something_a_person_would_send():
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
@@ -3281,7 +3336,7 @@ def test_claude_writes_something_a_person_would_send():
     assert len(pitch.body.split()) < 200
 ```
 
-Check the skip marker matches whatever the existing live tests use — if they key off a different variable, use theirs rather than inventing `NOBLE_HUNTER_LIVE`.
+Read `tests/test_suggestions_live.py` and follow how it finds the API key too — the live tests share a lookup that falls back to `.env.local`. Don't read or print the key itself.
 
 - [ ] **Step 6: Run the suite, lint and commit**
 
@@ -4623,7 +4678,10 @@ def _pitch_request(
     )
 ```
 
-One thing to know while writing this: `sender_name` above is a placeholder taken from the signed-in email. Leave it; the artist's own sign-off is a later refinement, and Claude is told to sign off as the musician either way.
+Two things to know while writing this:
+
+- `sender_name` above is a placeholder taken from the signed-in email. Leave it; the artist's own sign-off is a later refinement, and Claude is told to sign off as the musician either way.
+- **Every field of `PitchRequest` is typed `str`, so coerce here, not there.** `suggested_angle`, a track's `description` and the draft columns are all nullable, and a `None` reaching the writer would raise an `AttributeError` that `except PitchWriterError` doesn't catch — breaking the fallback exactly when it's needed. `core/pitch_writer.py` guards its own two entry points as well, but the boundary is the right place to fix it.
 
 - [ ] **Step 7: Write the panel template**
 
