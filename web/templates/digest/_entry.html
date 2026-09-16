@@ -55,7 +55,9 @@
   </div>
 
   <details class="digest-entry__pitch">
-    <summary class="digest-entry__pitch-summary">
+    {# Sending swaps this out of band too: the tag saying "Pitched" while this still says
+       "Write a pitch" is the card disagreeing with itself. #}
+    <summary class="digest-entry__pitch-summary" id="entry-summary-{{ entry.outreach_id }}">
       {% if entry.mail.waiting_on_you %}Read the reply{% elif entry.mail.started %}The conversation{% else %}Write a pitch{% endif %}
     </summary>
     <div id="pitch-{{ entry.outreach_id }}" hx-get="/outreach/{{ entry.outreach_id }}/pitch"

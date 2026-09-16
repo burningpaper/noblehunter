@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.access import Viewer, require_outreach
+from core.digest_view import entry_view
 from core.gmail import GmailError
 from core.mail_crypto import MailNotConfigured
 from core.mailboxes import MailboxProblem, mark_needs_reconnect
@@ -225,8 +226,21 @@ def _panel(
         # The entry's own status, not the word "Pitched": a follow-up sent on an entry already
         # at `replied` or `placed` must not swap the card's tag backwards.
         "status_label": VERDICT_LABELS.get(outreach.status, outreach.status),
+        "summary_label": _summary_label(db, outreach) if swap_status else "",
     }
     return templates.TemplateResponse(request, "pitch/_panel.html", context, status_code=status_code)
+
+
+def _summary_label(db: Session, outreach: Outreach) -> str:
+    """What the card's disclosure should say now, read from the same state the digest reads.
+
+    Derived rather than hardcoded so the card and the digest page can't drift: `entry_view`
+    gives back the entry's `EntryMail`, and the wording here matches `digest/_entry.html`.
+    """
+    mail = entry_view(db, outreach.id, today=datetime.now(UTC).date()).mail
+    if mail.waiting_on_you:
+        return "Read the reply"
+    return "The conversation" if mail.started else "Write a pitch"
 
 
 def _mailbox(db: Session, outreach: Outreach) -> MailAccount | None:

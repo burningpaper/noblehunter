@@ -4044,7 +4044,10 @@ and add the disclosure at the end of the card, after the verdict buttons `</div>
 
 ```html
   <details class="digest-entry__pitch">
-    <summary class="digest-entry__pitch-summary">Write a pitch</summary>
+    {# The summary carries an id because sending swaps it out of band, like the status tag: a
+       card whose tag says "Pitched" while its summary says "Write a pitch" disagrees with
+       itself. Task 12 fills in the wording from the entry's mail state. #}
+    <summary class="digest-entry__pitch-summary" id="entry-summary-{{ entry.outreach_id }}">Write a pitch</summary>
     <div id="pitch-{{ entry.outreach_id }}" hx-get="/outreach/{{ entry.outreach_id }}/pitch"
          hx-trigger="toggle once from:closest details" hx-swap="innerHTML">
       <p class="field__hint">Loading…</p>
@@ -4352,6 +4355,11 @@ class TestSending:
         assert f'id="entry-status-{outreach.id}"' in html
         assert 'hx-swap-oob="true"' in html
         assert "Pitched" in html
+        # The disclosure moves with the tag: a card saying "Pitched" above "Write a pitch"
+        # disagrees with itself until the page is reloaded.
+        assert f'id="entry-summary-{outreach.id}"' in html
+        assert "The conversation" in html
+        assert "Write a pitch" not in html
 
     def test_the_sent_message_is_shown_in_the_thread(self, session, mail_settings):
         outreach = a_digest_entry(session)
@@ -4650,7 +4658,11 @@ def _panel(
         "notice": notice,
         "error": error,
         "swap_status": swap_status,
-        "status_label": "Pitched",
+        # The entry's own status, not the word "Pitched": a follow-up sent on an entry already
+        # at `replied` or `placed` must not swap the card's tag backwards. Task 12 gives
+        # `entry_view` the mail state that `_summary_label` reads for the disclosure.
+        "status_label": VERDICT_LABELS.get(outreach.status, outreach.status),
+        "summary_label": _summary_label(db, outreach) if swap_status else "",
     }
     return templates.TemplateResponse(request, "pitch/_panel.html", context, status_code=status_code)
 
@@ -4798,8 +4810,11 @@ Create `web/templates/pitch/_panel.html`:
 </div>
 
 {% if swap_status %}
-{# The entry card is already on screen; keep its status tag in step without reloading the digest. #}
+{# The entry card is already on screen; keep it in step without reloading the digest. Both
+   fragments or neither: a tag reading "Pitched" above a summary still offering to write the
+   pitch is the card disagreeing with itself. #}
 <span class="tag tag--status" id="entry-status-{{ outreach.id }}" hx-swap-oob="true">{{ status_label }}</span>
+<summary class="digest-entry__pitch-summary" id="entry-summary-{{ outreach.id }}" hx-swap-oob="true">{{ summary_label }}</summary>
 {% endif %}
 ```
 
@@ -6411,6 +6426,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.access import Viewer, visible_to
+from core.digest_view import EntryMail
 from core.models import Artist, Curator, EmailMessage, MailDirection, Outreach, Playlist, Profile
 
 SNIPPET_LENGTH = 160
@@ -6479,7 +6495,9 @@ def inbox_view(
             profile_name=profile_name,
             curator_name=curator_name,
             playlist_name=playlist_name,
-            waiting_on_you=last[outreach_id].direction == MailDirection.IN,
+            # The same predicate the digest entry uses, not a second copy of it: two independent
+            # derivations of "whose turn is it" disagree the first time either one changes.
+            waiting_on_you=EntryMail(last_direction=last[outreach_id].direction).waiting_on_you,
             last_at=last[outreach_id].sent_at,
             days_since_last=max(0, (now - last[outreach_id].sent_at).days),
             last_snippet=_snippet(last[outreach_id].body_text),

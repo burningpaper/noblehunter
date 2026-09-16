@@ -238,6 +238,11 @@ class TestSending:
         assert f'id="entry-status-{outreach.id}"' in html
         assert 'hx-swap-oob="true"' in html
         assert "Pitched" in html
+        # The disclosure moves with the tag: a card saying "Pitched" above "Write a pitch"
+        # disagrees with itself until the page is reloaded.
+        assert f'id="entry-summary-{outreach.id}"' in html
+        assert "The conversation" in html
+        assert "Write a pitch" not in html
 
     def test_the_sent_message_is_shown_in_the_thread(self, session, mail_settings):
         outreach = a_digest_entry(session)
