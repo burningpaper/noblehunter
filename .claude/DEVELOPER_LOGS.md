@@ -471,3 +471,25 @@ Two defects in the plan, both found by running it. The first is the interesting 
 The second was in the template. The tag read `if unread ... elif waiting_on_you`, and a reply that has just arrived is always unread — so "Waiting on you", the one phrase the page exists to say, was nearly dead code. Whose turn it is now comes first, with the count appended to it.
 
 One rough edge left on purpose. Check now swaps only the list; the counts in the page heading ("2 waiting on you, 5 open in all") are rendered by the page and go stale until a reload. The data is never wrong, the heading is just not told — the same shape of problem Task 12 left on the digest card, and worth fixing in one go rather than twice. 1714 passed, 6 skipped, where the plan predicted about 1706: the eighteen new tests are as forecast, but two new routes cost the access walk nine parametrised cases, not one.
+
+## 2026-09-16 (night): The ceiling, not the nightly number
+
+Every night so far, the digest has worked to a flat number: twenty entries, because `digest_target` says twenty. Jarred put his finger on why that is the wrong number to work to. "I'm less worried about writing 20 emails and more about having to sustain 20 conversations." Writing is the cheap part. The expensive part is the twenty half-finished threads it leaves behind.
+
+So `core/conversations.py` answers a different question. Not "how many should we hand over tonight" but "how many conversations are already open, and how much room is left under the ceiling". The allowance is `min(digest_target, open_conversation_limit - open_now)`, floored at zero. A profile at its ceiling takes nothing tonight and that is the system working, not the system stuck.
+
+Two judgement calls sit in the docstring, because they are judgement calls and not facts, and someone reading this in six months should see them argued rather than inferred from a query.
+
+The first: a conversation is an *emailed* pitch. An entry marked Pitched by hand has nobody waiting on a reply to it — there is no thread, no inbox, nothing to sustain — so it does not take up a slot. The second: a pitch nobody answered within `quiet_after_days` is over in practice and stops counting, but a conversation where the *curator* spoke last never goes quiet. That one is waiting on you however long it sits there, and time does not make it less your turn.
+
+Nothing is stored. There is no `is_open` column and no nightly job to keep one honest, because the answer is derived from the messages every time it is asked. A reply landing at 3am changes tonight's allowance by itself, with nothing needing to be updated in the right order — the same instinct that put `waiting_on_you` on the digest entry rather than in a column, and for the same reason: derived state cannot drift from the messages, because it *is* the messages.
+
+The query is the one piece worth explaining. It is a single `DISTINCT ON (email_messages.outreach_id)` that fetches the newest message on every entry belonging to these profiles, and the quiet window is then applied in Python rather than in SQL — the window differs per profile, and this reads tens of rows, not millions. Postgres insists the distinct column leads the `ORDER BY`, which is why the statement selects `Outreach.profile_id` but orders by `EmailMessage.outreach_id`. Get that wrong and it is a runtime error, not a quietly wrong answer.
+
+I expected trouble from that select and did not get any. With `Outreach.profile_id` leading the columns clause it looked like SQLAlchemy would take `outreach` as the FROM and then self-join it, so I compiled the statement to SQL before running a single test. It infers the left side from the join condition, not from the column order, and picks `email_messages` correctly. Worth knowing next time the same shape appears.
+
+No deviations from the plan text: the module, both test files and the fifteen tests went in verbatim, and ruff's only change was to pull the `loads_for` signature onto one line now that it fits. 1730 passed, 6 skipped, exactly as forecast.
+
+Two things for what comes next, and the first is a real one. Nothing here looks at `Outreach.status`, and "the curator spoke last never goes quiet" has a trap in it. A curator who replies "not for us", on an entry you then mark bad-fit or dead, leaves an inbound last message that never ages out — so a finished conversation holds a slot permanently. Do that twenty times over a year and a profile with a limit of twenty has an allowance of zero forever, with no way to see why. That is faithful to the judgement call as written and pinned by the tests, so it stays; but Task 16 is wiring this into the night, and a silted-up profile silently producing an empty digest is the failure mode to watch for. Excluding terminal statuses from the count is the obvious fix when it bites.
+
+The second is smaller. `ConversationLoad.full` is written and untested because nothing calls it yet — Task 16 is expected to. If it turns out nothing wants it, delete it rather than leaving a convenience nobody uses.

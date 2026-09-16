@@ -7112,6 +7112,7 @@ from core.conversations import conversation_load, loads_for, open_conversations
 from core.models import MailDirection
 from tests.conversation_helpers import pitched as _pitched
 from tests.factories import make_artist, make_mailbox, make_profile
+from tests.query_counting import record_statements
 
 NOW = datetime(2026, 9, 20, 2, 0, tzinfo=UTC)
 
@@ -7378,8 +7379,7 @@ Expected: 15 passed.
 ```bash
 uv run pytest -q
 uv run ruff check . && uv run ruff format .
-git add core/conversations.py tests/test_conversations.py tests/conversation_helpers.py \
-  tests/query_counting.py tests/test_digest_view_mail.py
+git add core/conversations.py tests/test_conversations.py tests/conversation_helpers.py
 git commit -m "feat: work out how many conversations are open
 
 The ceiling Jarred asked for: sustaining twenty conversations is the real limit, not writing
