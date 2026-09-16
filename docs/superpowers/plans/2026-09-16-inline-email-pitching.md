@@ -4834,13 +4834,18 @@ In `tests/access_world.py`:
         entry.draft_subject, entry.draft_body = "Their subject", "Their draft"
 ```
 
-The walk's clients are built by `outsider_client` and `admin_client`, which don't pass `gmail_for`, so the app would build a real Gmail client if a send ever got through. That is exactly what should never happen — but to make the test's failure a clean assertion rather than a network call, pass a stub in both:
+The walk's clients are built by `outsider_client` and `admin_client`, which don't pass `gmail_for`, so the app would build a real Gmail client if a send ever got through. **The two clients need different stubs, and the difference is the point.**
+
+The outsider must never reach Gmail at all — a send there is a leak, and it should fail as a loud assertion rather than a network call. The admin is the *positive* control: `test_an_admin_calling_the_same_write_route_does_change_something` calls every write route as someone who is allowed, and the send has to actually land or the snapshot proves nothing. So:
 
 ```python
+    # outsider_client
     gmail_for=lambda mailbox, cipher, settings, http: _RefusingGmail(),
+    # admin_client
+    gmail_for=lambda mailbox, cipher, settings, http: FakeGmailSender(),
 ```
 
-with, at the top of the file:
+with, at the top of the file (Task 13 extends this class, so keep the name):
 
 ```python
 class _RefusingGmail:
@@ -4849,6 +4854,8 @@ class _RefusingGmail:
     def send(self, raw: str, *, thread_id: str | None = None):
         raise AssertionError("An access walk reached Gmail; a send leaked past require_outreach")
 ```
+
+Both clients also need `pitch_writer=FakePitchWriter()`: the test settings carry no `ANTHROPIC_API_KEY`, so without it `/pitch/write` writes nothing and the admin control fails for a reason that has nothing to do with access.
 
 - [ ] **Step 9: Run the tests**
 
@@ -4965,7 +4972,9 @@ class FakeGmail:
 
 
 def a_pitched_entry(session, *, thread_id="thread1"):
-    artist = make_artist(session, "Synman")
+    # Named after the thread because `artists.name` is unique: the tests that want two mailboxes
+    # need two artists, since a mailbox belongs to one.
+    artist = make_artist(session, f"Synman ({thread_id})")
     profile = make_profile(session, "IDM Playlists", artist=artist)
     mailbox = make_mailbox(session, artist, address=MAILBOX_ADDRESS, history_id="1000")
     profile.mail_account_id = mailbox.id
@@ -5057,10 +5066,13 @@ class TestBringingRepliesIn:
 class TestWhenGmailSaysNo:
     def test_an_expired_history_id_rereads_the_threads_we_know(self, session):
         outreach, mailbox = a_pitched_entry(session)
-        gmail = FakeGmail(error=GmailError("history-gone", "That history id is too old"))
-        gmail.threads = {
-            "thread1": {"messages": [gmail_message("reply1", "thread1", sender=CURATOR_ADDRESS, body="Yes")]}
-        }
+        reply = gmail_message("reply1", "thread1", sender=CURATOR_ADDRESS, body="Yes")
+        # The thread lists the message; the sync then fetches it by id, as it does for history.
+        gmail = FakeGmail(
+            error=GmailError("history-gone", "That history id is too old"),
+            messages={"reply1": reply},
+            threads={"thread1": {"messages": [reply]}},
+        )
 
         outcome = sync_mailbox(session, mailbox, gmail, now=NOW)
 
@@ -5315,6 +5327,11 @@ def _already_stored(session: Session, mail_account_id: int, gmail_message_id: st
 
 
 def _store(session: Session, mailbox: MailAccount, outreach_id: int, payload: dict) -> None:
+    # `parse_message` is deliberately forgiving, so a malformed payload comes back with an empty
+    # id and a 1970 date rather than raising. Storing that would put a message in the thread that
+    # sorts before everything and never goes quiet, so refuse it here and let the caller skip it.
+    if not payload.get("id") or not payload.get("internalDate"):
+        raise ValueError("a message with no id or no date can't be placed in a thread")
     parsed = parse_message(payload)
     ours = parsed.from_address.strip().lower() == mailbox.address.strip().lower()
     session.add(
@@ -5362,7 +5379,7 @@ One judgement call is left to you: `_connected_mailboxes` reads every artist's m
 
 Run: `uv run pytest tests/test_mail_sync.py -q`
 
-Expected: 14 passed.
+Expected: 15 passed.
 
 - [ ] **Step 5: Run the suite, lint and commit**
 
@@ -5599,6 +5616,14 @@ def sync_round(engine: Engine, settings: PipelineSettings) -> dict[int, SyncOutc
 
         outcomes = sync_all(session, open_gmail=open_gmail, now=datetime.now(UTC))
         session.commit()
+
+    # `sync_all` never raises -- it collects failures instead -- so a runner watching only for
+    # exceptions would call a permanently broken mailbox a clean round. Say what happened.
+    summary = describe(outcomes)
+    if any(outcome.error for outcome in outcomes.values()):
+        logger.warning("%s", summary)
+    else:
+        logger.info("%s", summary)
     return outcomes
 
 
