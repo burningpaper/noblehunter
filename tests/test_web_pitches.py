@@ -10,7 +10,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from core.gmail import GmailError
-from core.models import EmailMessage, MailDirection, Outreach, OutreachStatus
+from core.models import EmailMessage, MailAccount, MailDirection, Outreach, OutreachStatus
 from core.pitch_writer import PitchWriterError, template_pitch
 from tests.factories import (
     make_artist,
@@ -362,6 +362,45 @@ class TestSending:
 
         assert second.status_code == 200
         assert len(gmail.sent) == 1
+
+    def test_an_unusable_curator_address_is_refused_in_place(self, session, mail_settings):
+        outreach = a_digest_entry(session)
+        outreach.curator.contacts[0].value = "Nina <nina@broken-machines.com>"
+        session.flush()
+        gmail = FakeGmailSender()
+        client = a_client(session, settings=mail_settings, gmail=gmail)
+
+        response = post(
+            client,
+            f"/outreach/{outreach.id}/pitch/send",
+            {"subject": "Kelvin", "body": "Hi Nina", "send_key": "k"},
+        )
+
+        assert response.status_code == 422
+        assert "email address" in response.text
+        assert gmail.sent == []
+        assert session.get(Outreach, outreach.id).status == OutreachStatus.NEW
+
+    def test_a_mailbox_with_no_address_is_refused_rather_than_crashing(self, session, mail_settings):
+        # What a Gmail profile with no `emailAddress` used to leave behind: a mailbox stored with
+        # an empty address, so every send from it built an empty From header. That raised
+        # `HeaderProblem`, which no handler caught, and the person got a 500 instead of a reason.
+        outreach = a_digest_entry(session)
+        session.get(MailAccount, outreach.profile.mail_account_id).address = ""
+        session.flush()
+        gmail = FakeGmailSender()
+        client = a_client(session, settings=mail_settings, gmail=gmail)
+
+        response = post(
+            client,
+            f"/outreach/{outreach.id}/pitch/send",
+            {"subject": "Kelvin", "body": "Hi Nina", "send_key": "k"},
+        )
+
+        assert response.status_code == 422
+        assert "email address" in response.text
+        assert gmail.sent == []
+        assert session.get(Outreach, outreach.id).status == OutreachStatus.NEW
 
     def test_sending_without_a_mailbox_is_refused(self, session, mail_settings):
         outreach = a_digest_entry(session, with_mailbox=False)

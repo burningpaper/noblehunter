@@ -178,6 +178,22 @@ def test_an_answer_that_is_not_json_is_rejected_rather_than_crashing():
     assert error.value.kind == "rejected"
 
 
+@pytest.mark.parametrize("payload", [{"historyId": "9001"}, {"emailAddress": "", "historyId": "9001"}])
+def test_a_profile_that_names_no_address_is_rejected_rather_than_empty(payload):
+    # An empty address used to come straight back from here and reach `connect_mailbox`, which
+    # would store a mailbox with no address at all. Every later send from it then built an empty
+    # From header and failed far away from the cause.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == ACCESS_TOKEN_URL:
+            return token_response()
+        return httpx.Response(200, json=payload)
+
+    with pytest.raises(GmailError) as error:
+        gmail(handler).profile()
+
+    assert error.value.kind == "rejected"
+
+
 def test_a_send_that_names_no_message_is_rejected_rather_than_crashing():
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url) == ACCESS_TOKEN_URL:

@@ -27,6 +27,7 @@ from core.digest_view import entry_view
 from core.gmail import GmailError
 from core.mail_crypto import MailNotConfigured
 from core.mailboxes import MailboxProblem, mark_needs_reconnect
+from core.mime import HeaderProblem
 from core.models import MailAccount, Outreach, ProfileTrack, User
 from core.pitch_writer import PitchRequest, PitchWriterError
 from core.pitches import (
@@ -51,6 +52,10 @@ DbSession = Annotated[Session, Depends(get_db)]
 FormText = Annotated[str, Form()]
 
 GMAIL_TIMEOUT_SECONDS = 30
+BAD_ADDRESS = (
+    "An address on file isn't a usable email address, so nothing was sent. Check the mailbox on "
+    "the profile page and the curator's contact on the card."
+)
 NO_MAILBOX = "This profile isn't pitching from a mailbox yet. Connect one on the profile page."
 NO_WRITER = "Drafting with Claude needs ANTHROPIC_API_KEY. You can still write the pitch yourself."
 RECONNECT = "Google refused this mailbox. Reconnect it on the profile page, then send again."
@@ -173,6 +178,14 @@ def send(
             notice=SENT if already else None,
             status_code=200 if already else 422,
         )
+    except HeaderProblem:
+        # A field that can't be a header -- in practice a mailbox stored with no address at all.
+        # Nothing caught this, so it left here as a 500. This route's whole promise is to say
+        # which of the three things it needs is wrong, and an unusable address is one of them.
+        # The message is deliberately vague about which end: both are "an address on file".
+        db.rollback()
+        logger.warning("A pitch couldn't be built into a message")
+        return _panel(request, db, outreach, subject=subject, body=body, error=BAD_ADDRESS, status_code=422)
     except GmailError as error:
         db.rollback()
         if error.kind == "auth":

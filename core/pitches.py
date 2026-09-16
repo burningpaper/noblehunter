@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.contact_routes import USABLE_GRADES, best_contact
+from core.contacts import normalize_email
 from core.exclusion import PERMANENT_VERDICTS, record_verdict
 from core.mime import build_message
 from core.models import (
@@ -30,6 +31,7 @@ from core.models import (
 
 MAX_SUBJECT_LENGTH = 200
 NO_EMAIL = "This curator has no email address good enough to write to."
+UNUSABLE_EMAIL = "The address on file for this curator isn't a usable email address."
 # Sending is already done once the status reaches any of these; a follow-up must not walk the
 # entry backwards to "pitched" (a reply came in, or the track was placed).
 AT_OR_PAST_PITCHED = (OutreachStatus.PITCHED, OutreachStatus.REPLIED, OutreachStatus.PLACED)
@@ -51,7 +53,7 @@ def pitch_address(session: Session, outreach: Outreach) -> str:
     """
     best = best_contact(session, outreach.curator_id)
     if best is not None and best.route_type == RouteType.EMAIL:
-        return best.value
+        return _as_email(best.value)
     fallback = session.scalar(
         select(Contact)
         .where(
@@ -64,7 +66,34 @@ def pitch_address(session: Session, outreach: Outreach) -> str:
     )
     if fallback is None:
         raise PitchProblem(NO_EMAIL)
-    return fallback.value
+    return _as_email(fallback.value)
+
+
+def _as_email(stored: str) -> str:
+    """A stored contact turned into an address fit for a To header, or raise.
+
+    Research keeps `value` exactly as it was scraped and normalizes only `contact_key`, so a
+    perfectly good contact can sit in the database as `<Nina@B.com>`, `nina@b.com.` or
+    `mailto:nina@b.com`. Sent as-is that bounces, or renders as nonsense in the curator's mail
+    client. `normalize_email` is the very function that decided this address *is* this curator
+    -- using it here is what keeps the address we write to and the identity we deduplicate on
+    from disagreeing.
+
+    A value that won't parse at all shouldn't be reachable: research derives the key from the
+    value and drops the contact when that fails. The guard is here because nothing keeps the
+    two agreeing afterwards, and the wrong answer -- putting an unparseable string in a To
+    header -- is a real email going somewhere nobody chose.
+
+    The deliberate trade-off: this lowercases the whole address, local part included, which
+    RFC-wise is lossy, since a local part may in theory be case-sensitive. Every mainstream
+    provider treats it as case-insensitive, and the app already settles curator identity this
+    way, so agreeing with it beats inventing a second rule. Don't "fix" this to preserve the
+    local part's case without changing `contact_key` to match, or the two drift apart again.
+    """
+    address = normalize_email(stored or "")
+    if address is None:
+        raise PitchProblem(UNUSABLE_EMAIL)
+    return address
 
 
 def save_draft(session: Session, outreach: Outreach, *, subject: str, body: str, now: datetime) -> None:

@@ -68,7 +68,12 @@ class Gmail:
     def profile(self) -> tuple[str, str]:
         """The mailbox's own address and its current history id."""
         data = self._get(f"{API_ROOT}/profile")
-        return str(data.get("emailAddress", "")), str(data.get("historyId", ""))
+        address = str(data.get("emailAddress", "")).strip()
+        if not address:
+            # An empty address would be stored as a mailbox with no address, and every send from
+            # it would then fail on an empty From header, far away from this cause.
+            raise GmailError("rejected", "Gmail's profile didn't say which mailbox it is")
+        return address, str(data.get("historyId", ""))
 
     def send(self, raw: str, *, thread_id: str | None = None) -> tuple[str, str]:
         """Send a base64url MIME message. Returns (message id, thread id)."""

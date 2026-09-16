@@ -58,12 +58,27 @@ def an_outreach(session, *, email: str | None = "nina@broken-machines.com"):
     return make_outreach(session, curator, profile, NIGHT, playlist=playlist)
 
 
-def a_sendable(session):
-    outreach = an_outreach(session)
+def a_sendable(session, **kwargs):
+    outreach = an_outreach(session, **kwargs)
     mailbox = make_mailbox(session, outreach.profile.artist, address="synman@gmail.com")
     outreach.profile.mail_account_id = mailbox.id
     session.flush()
     return outreach, mailbox
+
+
+# The same address, written the three ways research actually scrapes it off a page.
+AS_SCRAPED = ["<Nina@B.com>", "Nina@B.com.", "mailto:nina@b.com"]
+
+
+def spoil_the_stored_address(session, outreach) -> None:
+    """Leave the contact's key alone and make its value unusable as an address.
+
+    Research derives `contact_key` from `value` once, at the moment it stores the contact, and
+    never looks at the pair again -- so nothing keeps them agreeing afterwards. This is the
+    shape of the row that results, and the reason `pitch_address` has to check rather than trust.
+    """
+    outreach.curator.contacts[0].value = "Nina <nina@b.com>"
+    session.flush()
 
 
 class TestWhoWeWriteTo:
@@ -84,6 +99,22 @@ class TestWhoWeWriteTo:
         outreach = make_outreach(session, curator, make_profile(session), NIGHT)
 
         with pytest.raises(PitchProblem, match="no email address"):
+            pitch_address(session, outreach)
+
+    @pytest.mark.parametrize("scraped", AS_SCRAPED)
+    def test_the_address_is_tidied_the_same_way_the_dedup_key_is(self, session, scraped):
+        # Research stores `value` exactly as it came off the page and normalizes only
+        # `contact_key`. Every one of these is already recognised as this curator's address for
+        # deduplication; the address we write to has to agree with that, not with the scrape.
+        outreach = an_outreach(session, email=scraped)
+
+        assert pitch_address(session, outreach) == "nina@b.com"
+
+    def test_a_stored_value_that_is_not_an_address_is_refused(self, session):
+        outreach = an_outreach(session)
+        spoil_the_stored_address(session, outreach)
+
+        with pytest.raises(PitchProblem, match="usable email address"):
             pitch_address(session, outreach)
 
 
@@ -147,6 +178,30 @@ class TestSending:
         assert message.subject == "Kelvin for Broken Machines"
         assert message.body_text.startswith("Hi Nina,")
         assert message.sent_at == NOW
+
+    @pytest.mark.parametrize("scraped", AS_SCRAPED)
+    def test_it_writes_to_the_tidied_address_not_the_scraped_one(self, session, scraped):
+        # Asserted on the message that actually reached Gmail, because that is the thing a
+        # curator's mail server sees. A `To:` of `<Nina@B.com>.` bounces or lands wrong.
+        outreach, mailbox = a_sendable(session, email=scraped)
+        gmail = FakeGmail()
+
+        message = send(session, outreach, mailbox, gmail)
+
+        assert "To: nina@b.com" in gmail.decoded()
+        assert scraped not in gmail.decoded()
+        assert message.to_address == "nina@b.com"
+
+    def test_an_address_that_cannot_be_parsed_sends_nothing(self, session):
+        outreach, mailbox = a_sendable(session)
+        spoil_the_stored_address(session, outreach)
+        gmail = FakeGmail()
+
+        with pytest.raises(PitchProblem, match="usable email address"):
+            send(session, outreach, mailbox, gmail)
+
+        assert gmail.sent == []
+        assert session.scalar(select(func.count()).select_from(EmailMessage)) == 0
 
     def test_sending_marks_the_entry_pitched(self, session):
         outreach, mailbox = a_sendable(session)
