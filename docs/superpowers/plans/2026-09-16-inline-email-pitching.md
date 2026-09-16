@@ -1836,6 +1836,15 @@ class TestConnecting:
 
         assert mine.id != theirs.id
 
+    def test_the_same_address_in_different_letters_is_one_mailbox(self, session, cipher):
+        artist = make_artist(session)
+        first = connect(session, artist, cipher, address="Synman@Gmail.com")
+
+        again = connect(session, artist, cipher, address="synman@gmail.com")
+
+        assert again.id == first.id
+        assert again.address == "synman@gmail.com"
+
     def test_a_disconnected_mailbox_has_no_token_to_read(self, session, cipher):
         artist = make_artist(session)
         profile = make_profile(session, artist=artist)
@@ -1903,6 +1912,27 @@ class TestAttaching:
         assert released is mailbox
         assert mailbox.refresh_token_encrypted is None
         assert mailbox.disconnected_at == NOW
+
+    def test_a_mailbox_nobody_is_connected_to_cannot_be_attached(self, session, cipher):
+        artist = make_artist(session)
+        mailbox = connect(session, artist, cipher)
+        first = make_profile(session, artist=artist)
+        attach_mailbox(session, first, mailbox)
+        detach_mailbox(session, first, now=NOW)
+
+        with pytest.raises(MailboxProblem, match="isn't connected"):
+            attach_mailbox(session, make_profile(session, artist=artist), mailbox)
+
+    def test_letting_go_clears_a_stale_error(self, session, cipher):
+        artist = make_artist(session)
+        mailbox = connect(session, artist, cipher)
+        profile = make_profile(session, artist=artist)
+        attach_mailbox(session, profile, mailbox)
+        mark_needs_reconnect(session, mailbox, "Google refused the saved Gmail access")
+
+        detach_mailbox(session, profile, now=NOW)
+
+        assert mailbox.last_error is None
 
     def test_detaching_a_profile_with_no_mailbox_does_nothing(self, session):
         assert detach_mailbox(session, make_profile(session), now=NOW) is None
@@ -1990,7 +2020,10 @@ def connect_mailbox(
         )
     )
     if mailbox is None:
-        mailbox = MailAccount(artist_id=artist_id, address=address.strip())
+        # Stored lowercased, like every other address in the app (users, contacts, members):
+        # the unique constraint is on the raw column, so two spellings would otherwise be two
+        # mailboxes for one Gmail, and the lookup above would pick between them arbitrarily.
+        mailbox = MailAccount(artist_id=artist_id, address=address.strip().lower())
         session.add(mailbox)
     mailbox.refresh_token_encrypted = encrypt_token(cipher, refresh_token)
     mailbox.history_id = history_id
@@ -2034,6 +2067,7 @@ def detach_mailbox(session: Session, profile: Profile, *, now: datetime) -> Mail
     mailbox.refresh_token_encrypted = None
     mailbox.disconnected_at = now
     mailbox.needs_reconnect = False
+    mailbox.last_error = None  # whatever went wrong last is over; don't keep showing it
     session.flush()
     return mailbox
 
@@ -2073,7 +2107,7 @@ def _still_used(session: Session, mail_account_id: int) -> bool:
 
 Run: `uv run pytest tests/test_mailboxes.py -q`
 
-Expected: 13 passed.
+Expected: 16 passed.
 
 - [ ] **Step 5: Run the suite, lint and commit**
 
@@ -4231,6 +4265,7 @@ from sqlalchemy.orm import Session
 
 from core.access import Viewer, require_outreach
 from core.gmail import GmailError
+from core.mail_crypto import MailNotConfigured
 from core.mailboxes import MailboxProblem, mark_needs_reconnect
 from core.models import MailAccount, Outreach, ProfileTrack
 from core.pitch_writer import PitchRequest, PitchWriterError
@@ -4356,6 +4391,13 @@ def send(
                 send_key=send_key.strip() or None,
             )
         db.commit()
+    except MailNotConfigured:
+        # The key can't read this mailbox's stored token (it was rotated, or the row was
+        # altered). Reconnecting stores a fresh one, so that's what to say -- and a 500 is
+        # exactly what this must not be.
+        db.rollback()
+        logger.warning("A stored Gmail token couldn't be read")
+        return _panel(request, db, outreach, subject=subject, body=body, error=RECONNECT)
     except (PitchProblem, MailboxProblem) as problem:
         db.rollback()
         already = "already been sent" in str(problem)

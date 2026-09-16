@@ -43,7 +43,10 @@ def connect_mailbox(
         )
     )
     if mailbox is None:
-        mailbox = MailAccount(artist_id=artist_id, address=address.strip())
+        # Stored lowercased, like every other address in the app (users, contacts, members):
+        # the unique constraint is on the raw column, so two spellings would otherwise be two
+        # mailboxes for one Gmail, and the lookup above would pick between them arbitrarily.
+        mailbox = MailAccount(artist_id=artist_id, address=address.strip().lower())
         session.add(mailbox)
     mailbox.refresh_token_encrypted = encrypt_token(cipher, refresh_token)
     mailbox.history_id = history_id
@@ -87,6 +90,7 @@ def detach_mailbox(session: Session, profile: Profile, *, now: datetime) -> Mail
     mailbox.refresh_token_encrypted = None
     mailbox.disconnected_at = now
     mailbox.needs_reconnect = False
+    mailbox.last_error = None  # whatever went wrong last is over; don't keep showing it
     session.flush()
     return mailbox
 

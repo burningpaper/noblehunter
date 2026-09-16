@@ -69,6 +69,15 @@ class TestConnecting:
 
         assert mine.id != theirs.id
 
+    def test_the_same_address_in_different_letters_is_one_mailbox(self, session, cipher):
+        artist = make_artist(session)
+        first = connect(session, artist, cipher, address="Synman@Gmail.com")
+
+        again = connect(session, artist, cipher, address="synman@gmail.com")
+
+        assert again.id == first.id
+        assert again.address == "synman@gmail.com"
+
     def test_a_disconnected_mailbox_has_no_token_to_read(self, session, cipher):
         artist = make_artist(session)
         profile = make_profile(session, artist=artist)
@@ -136,6 +145,27 @@ class TestAttaching:
         assert released is mailbox
         assert mailbox.refresh_token_encrypted is None
         assert mailbox.disconnected_at == NOW
+
+    def test_a_mailbox_nobody_is_connected_to_cannot_be_attached(self, session, cipher):
+        artist = make_artist(session)
+        mailbox = connect(session, artist, cipher)
+        first = make_profile(session, artist=artist)
+        attach_mailbox(session, first, mailbox)
+        detach_mailbox(session, first, now=NOW)
+
+        with pytest.raises(MailboxProblem, match="isn't connected"):
+            attach_mailbox(session, make_profile(session, artist=artist), mailbox)
+
+    def test_letting_go_clears_a_stale_error(self, session, cipher):
+        artist = make_artist(session)
+        mailbox = connect(session, artist, cipher)
+        profile = make_profile(session, artist=artist)
+        attach_mailbox(session, profile, mailbox)
+        mark_needs_reconnect(session, mailbox, "Google refused the saved Gmail access")
+
+        detach_mailbox(session, profile, now=NOW)
+
+        assert mailbox.last_error is None
 
     def test_detaching_a_profile_with_no_mailbox_does_nothing(self, session):
         assert detach_mailbox(session, make_profile(session), now=NOW) is None
