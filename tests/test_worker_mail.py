@@ -43,6 +43,24 @@ def test_it_stops_when_the_work_is_done():
     assert sync.calls == after
 
 
+def test_stopping_doesnt_wait_out_a_round_in_flight():
+    # A round talking to a slow Gmail must not keep the runner up: the join waits the grace
+    # period, not the five-minute interval. The thread is a daemon, so the process still leaves.
+    started, release = threading.Event(), threading.Event()
+
+    def slow_sync() -> None:
+        started.set()
+        release.wait(timeout=5)
+
+    began = time.monotonic()
+    with keep_reading_mail(slow_sync, every=0.01, shutdown_grace=0.05):
+        assert started.wait(timeout=2), "the mail thread never ran"
+    elapsed = time.monotonic() - began
+    release.set()
+
+    assert elapsed < 1
+
+
 def test_a_failing_sync_doesnt_stop_the_thread():
     sync = CountingSync(error=RuntimeError("Gmail is down"))
 

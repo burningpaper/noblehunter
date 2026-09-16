@@ -46,6 +46,7 @@ NIGHTLY_AT = time(2, 0)
 POLL_SECONDS = 60
 BEAT_SECONDS = 30
 MAIL_EVERY_SECONDS = 300
+MAIL_SHUTDOWN_GRACE_SECONDS = 10  # how long stopping waits for a round in flight, never `every`
 STALE_RUN_AFTER = timedelta(minutes=10)
 START_TOLERANCE = timedelta(minutes=1)  # the Mac's clock and the database's can differ a little
 RUN_LOCK_KEY = 7_406_311  # any fixed number, as long as every runner uses the same one
@@ -293,11 +294,20 @@ def keep_checking_in(engine: Engine, every: float = BEAT_SECONDS) -> Iterator[No
 
 
 @contextmanager
-def keep_reading_mail(sync: Callable[[], None], every: float = MAIL_EVERY_SECONDS) -> Iterator[None]:
+def keep_reading_mail(
+    sync: Callable[[], None],
+    every: float = MAIL_EVERY_SECONDS,
+    shutdown_grace: float = MAIL_SHUTDOWN_GRACE_SECONDS,
+) -> Iterator[None]:
     """Read replies on a background thread for as long as the runner lives.
 
     Separate from the run loop on purpose: a nightly run can take an hour, and replies shouldn't
     wait for it. A failure here is logged and tried again -- mail must never fail a run.
+
+    Stopping waits `shutdown_grace`, not `every`. Setting the event wakes the thread at once
+    unless it is mid-round, and a round that is talking to a slow Gmail must not keep the runner
+    up for another five minutes -- Jarred restarts it by hand on every ship. The thread is a
+    daemon, so if it really is still working when the grace runs out, the process leaves anyway.
     """
     stop = threading.Event()
 
@@ -314,7 +324,7 @@ def keep_reading_mail(sync: Callable[[], None], every: float = MAIL_EVERY_SECOND
         yield
     finally:
         stop.set()
-        thread.join(timeout=every)
+        thread.join(timeout=shutdown_grace)
 
 
 def recover_abandoned(session: Session, now: datetime, *, stale_after: timedelta = STALE_RUN_AFTER) -> int:

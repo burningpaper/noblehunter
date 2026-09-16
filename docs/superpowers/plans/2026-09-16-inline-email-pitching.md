@@ -5479,6 +5479,24 @@ def test_it_stops_when_the_work_is_done():
     assert sync.calls == after
 
 
+def test_stopping_doesnt_wait_out_a_round_in_flight():
+    # A round talking to a slow Gmail must not keep the runner up: the join waits the grace
+    # period, not the five-minute interval. The thread is a daemon, so the process still leaves.
+    started, release = threading.Event(), threading.Event()
+
+    def slow_sync() -> None:
+        started.set()
+        release.wait(timeout=5)
+
+    began = time.monotonic()
+    with keep_reading_mail(slow_sync, every=0.01, shutdown_grace=0.05):
+        assert started.wait(timeout=2), "the mail thread never ran"
+    elapsed = time.monotonic() - began
+    release.set()
+
+    assert elapsed < 1
+
+
 def test_a_failing_sync_doesnt_stop_the_thread():
     sync = CountingSync(error=RuntimeError("Gmail is down"))
 
@@ -5518,14 +5536,24 @@ In `pipeline/worker.py`, next to `keep_checking_in`:
 
 ```python
 MAIL_EVERY_SECONDS = 300
+MAIL_SHUTDOWN_GRACE_SECONDS = 10  # how long stopping waits for a round in flight, never `every`
 
 
 @contextmanager
-def keep_reading_mail(sync: Callable[[], None], every: float = MAIL_EVERY_SECONDS) -> Iterator[None]:
+def keep_reading_mail(
+    sync: Callable[[], None],
+    every: float = MAIL_EVERY_SECONDS,
+    shutdown_grace: float = MAIL_SHUTDOWN_GRACE_SECONDS,
+) -> Iterator[None]:
     """Read replies on a background thread for as long as the runner lives.
 
     Separate from the run loop on purpose: a nightly run can take an hour, and replies shouldn't
     wait for it. A failure here is logged and tried again -- mail must never fail a run.
+
+    Stopping waits `shutdown_grace`, not `every`. Setting the event wakes the thread at once
+    unless it is mid-round, and a round that is talking to a slow Gmail must not keep the runner
+    up for another five minutes -- Jarred restarts it by hand on every ship. The thread is a
+    daemon, so if it really is still working when the grace runs out, the process leaves anyway.
     """
     stop = threading.Event()
 
@@ -5542,7 +5570,7 @@ def keep_reading_mail(sync: Callable[[], None], every: float = MAIL_EVERY_SECOND
         yield
     finally:
         stop.set()
-        thread.join(timeout=every)
+        thread.join(timeout=shutdown_grace)
 ```
 
 and give `run_forever` an optional `sync_mail` argument, wrapping its loop:
