@@ -227,6 +227,23 @@ Goal: Several artists use Noble Hunter without seeing each other's work or compe
 Success Criteria: Plan tasks in docs/superpowers/plans/2026-09-15-artists-and-access.md pass; a member of one artist gets 404 for every route on another artist's data; the same curator can reach two artists' digests on one night.
 Status: In Progress (stages 1 and 2 shipped 2026-09-16; stage 3, curators per artist, not started)
 
+## Stage 12: Pitching by email
+Goal: Pitch a curator from inside the digest — Claude drafts the letter, Jarred edits it, and it goes out from the artist's own Gmail — with replies read back into the app, and a ceiling on how many conversations a profile has open at once.
+Success Criteria: A pitch written in the digest arrives from the artist's own address and uses that curator up for 90 days exactly as the Pitched button does. A reply appears against its entry, and no other mail in the mailbox is ever fetched or stored. A profile at its conversation ceiling takes no new leads, and research doesn't pay for leads the digest won't hand over. Plan tasks in `docs/superpowers/plans/2026-09-16-inline-email-pitching.md` pass.
+Status: In Progress — built on `feature/email-pitching` (migration 0007 written, not yet applied to Neon).
+- ✅ Migration 0007: `mail_accounts`, `email_messages`, and mail columns on `profiles` and `outreach`. A composite foreign key makes Postgres refuse a profile pitching from another artist's mailbox.
+- ✅ `core/gmail.py` (five calls, errors typed `auth` / `transient` / `rejected` / `history-gone`), `core/mime.py` (plain text only, header injection refused), `core/mailboxes.py` (a mailbox belongs to an artist; reconnecting is also the repair path).
+- ✅ Connect, attach and disconnect a mailbox on the profile page (`web/mail.py`) — a second trip to Google, because `gmail.send` and `gmail.readonly` are a different consent screen from sign-in.
+- ✅ Claude drafts the pitch (`core/pitch_writer.py`) with a template fallback so a flaky API never leaves an empty box. Sending (`core/pitches.py`) goes through `record_verdict`, so an emailed pitch and a hand-recorded one mean the same thing.
+- ✅ The compose panel on every digest entry (`web/pitches.py`): loaded only when opened, safe to press Send twice, and it hands back what you typed when something fails.
+- ✅ Reply sync (`core/mail_sync.py`), matched to our own threads *before* anything is fetched, run every five minutes from a background thread on the Mac Mini.
+- ✅ Mail state on the digest entry and in the runner panel, plus `/inbox`: every conversation, with the ones waiting on you first.
+- ✅ Conversation ceiling (`core/conversations.py`): `open_conversation_limit` and `quiet_after_days`, editable in the web app, honoured by both `pipeline/digest.py` and `pipeline/research.py`.
+- ✅ 1757 passed, 6 skipped. Lint clean.
+- ⏳ **Google consent — open, and it blocks the rest.** `gmail.readonly` is a *restricted* scope; `gmail.send` is only sensitive. The OAuth app is published, but publishing is not verification, so Google may refuse the restricted scope or show an unverified-app screen. Only Jarred can settle it, by connecting one real mailbox and reading the consent screen. Don't guess which way it goes.
+- ⏳ Ship checklist (in the plan, and Jarred's to run): Vercel environment variables, migrate Neon to 0007, re-run `db grant`, push, restart the runner, then send one real pitch.
+- ⏳ Known gaps, none breaking today: the two conversation settings can't be set from YAML, because `core/profile_import.py` writes settings onto the model without the validator; a digest that runs twice in one day counts the morning's emailed entries in both `taken` and `open_now`, so the evening top-up is over-conservative; `pitch_address`'s email fallback has no grade filter, so a grade-C address is pitchable.
+
 ---
 
 ## Open questions
