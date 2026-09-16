@@ -6,11 +6,7 @@
 <section class="page-heading rise">
   <p class="eyebrow">Inbox</p>
   <h1 class="page-heading__title">Conversations</h1>
-  {% if view.total %}
-  <p class="page-heading__lede">
-    {{ view.waiting }} waiting on you, {{ view.total }} open in all{% if view.unread %}, {{ view.unread }} unread{% endif %}.
-  </p>
-  {% endif %}
+  {% include "inbox/_counts.html" %}
 
   {% if view.profiles | length > 1 %}
   <nav class="inbox-filter" aria-label="Filter by profile">

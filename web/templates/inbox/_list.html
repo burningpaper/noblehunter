@@ -43,3 +43,9 @@
   </ol>
   {% endif %}
 </div>
+
+{% if inbox_notice %}
+{# Check now swaps only this list, so the heading's counts would otherwise still describe the
+   Inbox as it was before the check. #}
+{% with swap_counts = True %}{% include "inbox/_counts.html" %}{% endwith %}
+{% endif %}

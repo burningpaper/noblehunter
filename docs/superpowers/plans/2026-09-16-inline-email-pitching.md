@@ -1310,6 +1310,11 @@ def _payload(response: httpx.Response, url: str) -> dict:
 
 
 def _kind(response: httpx.Response, url: str) -> str:
+    if response.status_code == 403 and _is_rate_limit(response):
+        # Gmail says 403 for "too many requests" as well as for "no", and the two need opposite
+        # handling: this one clears by itself, while `auth` flags the mailbox as needing a person
+        # to reconnect it -- and nothing clears that flag but reconnecting through Google.
+        return "transient"
     if response.status_code in (401, 403):
         return "auth"
     if response.status_code == 404 and "/history" in url:
@@ -6722,6 +6727,10 @@ def test_check_now_reads_the_mailbox_and_reports(session, mail_settings):
 
     assert response.status_code == 200
     assert "No new replies" in response.text
+    # The check swaps only the list, so the heading's counts come back out of band with it --
+    # otherwise they keep describing the Inbox as it was before the check.
+    assert 'id="inbox-counts"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
 
 
 def test_check_now_without_a_mailbox_says_so(session, mail_settings):
@@ -6852,11 +6861,9 @@ Create `web/templates/inbox/page.html`:
 <section class="page-heading rise">
   <p class="eyebrow">Inbox</p>
   <h1 class="page-heading__title">Conversations</h1>
-  {% if view.total %}
-  <p class="page-heading__lede">
-    {{ view.waiting }} waiting on you, {{ view.total }} open in all{% if view.unread %}, {{ view.unread }} unread{% endif %}.
-  </p>
-  {% endif %}
+  {# The counts live in `inbox/_counts.html`, because Check now swaps only the list and has to
+     swap this out of band too -- one wording, not two that drift. #}
+  {% include "inbox/_counts.html" %}
 
   {% if view.profiles | length > 1 %}
   <nav class="inbox-filter" aria-label="Filter by profile">
@@ -6928,6 +6935,24 @@ Create `web/templates/inbox/_list.html`:
   </ol>
   {% endif %}
 </div>
+
+{% if inbox_notice %}
+{# Check now swaps only this list, so the heading's counts would otherwise still describe the
+   Inbox as it was before the check. #}
+{% with swap_counts = True %}{% include "inbox/_counts.html" %}{% endwith %}
+{% endif %}
+```
+
+And `web/templates/inbox/_counts.html`, which both the page and that swap render, so the sentence exists once:
+
+```html
+{# One wording for the counts, used by the page and swapped out of band after Check now: two
+   copies of this sentence would drift the first time either was edited. #}
+<p class="page-heading__lede" id="inbox-counts"{% if swap_counts %} hx-swap-oob="true"{% endif %}>
+  {% if view.total %}
+  {{ view.waiting }} waiting on you, {{ view.total }} open in all{% if view.unread %}, {{ view.unread }} unread{% endif %}.
+  {% endif %}
+</p>
 ```
 
 The panel is the same one the digest uses, which is the point: one place answers, one place sends.

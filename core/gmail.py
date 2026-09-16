@@ -24,6 +24,10 @@ ACCESS_TOKEN_URL = "https://oauth2.googleapis.com/token"
 API_ROOT = "https://gmail.googleapis.com/gmail/v1/users/me"
 TIMEOUT_SECONDS = 30
 TOKEN_EARLY_REFRESH_SECONDS = 60  # refresh a little before Google's expiry, to avoid a race
+# The reasons Google gives when a 403 means "too many requests", not "you may not".
+RATE_LIMIT_REASONS = frozenset(
+    {"ratelimitexceeded", "userratelimitexceeded", "quotaexceeded", "resource_exhausted"}
+)
 
 
 class GmailError(RuntimeError):
@@ -155,6 +159,11 @@ def _payload(response: httpx.Response, url: str) -> dict:
 
 
 def _kind(response: httpx.Response, url: str) -> str:
+    if response.status_code == 403 and _is_rate_limit(response):
+        # Gmail says 403 for "too many requests" as well as for "no", and the two need opposite
+        # handling: this one clears by itself, while `auth` flags the mailbox as needing a person
+        # to reconnect it -- and nothing clears that flag but reconnecting through Google.
+        return "transient"
     if response.status_code in (401, 403):
         return "auth"
     if response.status_code == 404 and "/history" in url:
@@ -162,6 +171,19 @@ def _kind(response: httpx.Response, url: str) -> str:
     if response.status_code == 429 or response.status_code >= 500:
         return "transient"
     return "rejected"
+
+
+def _is_rate_limit(response: httpx.Response) -> bool:
+    """Whether a 403 is Google saying "slow down" rather than "no"."""
+    try:
+        error = response.json().get("error", {})
+    except ValueError:
+        return False
+    if not isinstance(error, dict):
+        return False
+    reasons = {str(item.get("reason", "")).lower() for item in error.get("errors", []) or []}
+    reasons.add(str(error.get("status", "")).lower())
+    return bool(reasons & RATE_LIMIT_REASONS)
 
 
 def _what(url: str) -> str:

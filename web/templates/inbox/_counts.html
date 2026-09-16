@@ -1,0 +1,7 @@
+{# One wording for the counts, used by the page and swapped out of band after Check now: two
+   copies of this sentence would drift the first time either was edited. #}
+<p class="page-heading__lede" id="inbox-counts"{% if swap_counts %} hx-swap-oob="true"{% endif %}>
+  {% if view.total %}
+  {{ view.waiting }} waiting on you, {{ view.total }} open in all{% if view.unread %}, {{ view.unread }} unread{% endif %}.
+  {% endif %}
+</p>

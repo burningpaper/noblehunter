@@ -147,6 +147,10 @@ def test_check_now_reads_the_mailbox_and_reports(session, mail_settings):
 
     assert response.status_code == 200
     assert "No new replies" in response.text
+    # The check swaps only the list, so the heading's counts come back out of band with it --
+    # otherwise they keep describing the Inbox as it was before the check.
+    assert 'id="inbox-counts"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
 
 
 def test_check_now_without_a_mailbox_says_so(session, mail_settings):

@@ -65,6 +65,29 @@ def test_api_failures_are_sorted_into_kinds(status, kind):
     assert error.value.kind == kind
 
 
+def test_a_rate_limit_dressed_as_403_is_transient_not_auth():
+    # Gmail answers 403 for "slow down" as well as "no". Calling this `auth` would flag the
+    # mailbox as needing reconnection, and nothing clears that but reconnecting through Google.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == ACCESS_TOKEN_URL:
+            return token_response()
+        return httpx.Response(
+            403,
+            json={
+                "error": {
+                    "code": 403,
+                    "errors": [{"reason": "userRateLimitExceeded"}],
+                    "status": "RESOURCE_EXHAUSTED",
+                }
+            },
+        )
+
+    with pytest.raises(GmailError) as error:
+        gmail(handler).profile()
+
+    assert error.value.kind == "transient"
+
+
 def test_a_network_failure_is_transient_and_names_no_token():
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url) == ACCESS_TOKEN_URL:
