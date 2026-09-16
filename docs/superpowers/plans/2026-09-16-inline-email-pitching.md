@@ -8114,6 +8114,12 @@ git commit -m "docs: record what email pitching does and why
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
+**Built 2026-09-16** — `86cf67b`. `.env.example` needed no change: all three questions it must answer were already answerable, so the commit touches two files, not three. The developer log went 531 → 319 lines, fifteen fragments rewritten as one entry, with the Artists-and-access entry above them untouched. `IMPLEMENTATION_PLAN.md` gained Stage 12, recording migration 0007 as written and **not yet applied to Neon**.
+
+The builder's report closed with a list of engineering notes it felt were lost with the fragments. **Two of them were already fixed and must not be "restored" as open items:** the composite-FK crash (migration line 111 has carried `SET NULL (mail_account_id)` since Task 2) and `core/gmail.py`'s unguarded `KeyError` / `ValueError` (both guarded since Task 13). That is the fourth stale finding of this build; verify before acting on any of them.
+
+Three of its observations are real and unfixed, and none blocks the ship: mailbox addresses are stored lowercased but the unique constraint is on the raw column with no functional index; `_active_profiles` is duplicated in the two pipeline modules; and only the Inbox's "Check now" clears `needs_reconnect`, because `sync_all` skips flagged mailboxes.
+
 - [ ] **Step 5: The ship checklist — for Jarred, not for a subagent**
 
 **A subagent must not do any of this.** No Neon, no pushing, no `db grant` against production. Hand the branch over and stop.
@@ -8139,6 +8145,30 @@ The order that worked for Artists and access on 2026-09-16, adapted:
 11. Only then pitch a real curator.
 
 If anything in 10 goes wrong, the feature is inert without a connected mailbox: disconnect it on the profile and everything else in Noble Hunter carries on working.
+
+---
+
+## Final review, 2026-09-16
+
+All seventeen tasks built. Suite 1757 passed, 6 skipped; lint clean. Verdict: **ship with one fix first**.
+
+**Blocking, and fixed as Task 18 below:** `web/pitches.py:282` passed `viewer.email.split("@", 1)[0]` as `sender_name`, so every pitch was signed with an email local part — "burningpaper". It reached Claude's prompt (`core/pitch_writer.py:147`) *and* the template fallback (`:115`, `:122`, `:135`), which is the draft used when Claude has already failed and is therefore the least supervised thing the feature can send. No test caught it because `tests/test_pitch_writer.py` passes the human name "Jarred" while the route supplied something else: the unit test and its only caller never met.
+
+**Worth doing, not blocking:**
+
+1. `core/mail_sync.py:66` catches `(KeyError, TypeError, ValueError)` but not `DataError`. `core/mime.py` doesn't truncate `Message-ID`, stored as `String(400)`, so an over-long header aborts the transaction; `sync_all`'s broad `except` swallows it, every later mailbox in the round fails, and the runner retries the same message every five minutes. Replies would stop arriving with nothing on screen to say so. Low trigger frequency, high consequence — a `begin_nested` around `_store`, or truncation at the boundary, closes it.
+2. `core/pitches.py:94`→`:105` reads the send-key, then sends, then writes the row. Two concurrent posts both pass the check and both send; the unique index catches only the second *write*, and the `IntegrityError` handler then reports "Sent.", so a real double-send is indistinguishable from a deduplicated one. `hx-disabled-elt` covers the ordinary double-click; two tabs or a retried request remain. Inserting the send-key row before calling Gmail would let the index do the work.
+3. `tests/test_web_access_controls.py:35-40` — the comment promises an admin gets a different answer, but the table gives `/mail/callback` a 404 for both roles. The access check is sound by reading; the walk just doesn't prove it. Fix the comment so nobody trusts a control that isn't there.
+
+**Confirmed sound:** no cross-artist leak (every new route is in `route_walk.py`; mail routes resolve the artist from the viewer, never from a parameter); grade-C addresses unreachable on both paths; `gmail.send` reachable only from the one human-triggered route; the ceiling cannot silently starve a profile, and the digest page shows "N of M conversations open" so a throttled night explains itself.
+
+### Task 18: Sign the pitch with a person's name
+
+**Files:** Modify `web/pitches.py`, `core/pitch_writer.py`, `tests/test_web_pitches.py`
+
+`users.name` is populated from Google at sign-in and kept when Google omits it. Use it; fall back to `None` so `pitch_writer`'s existing `or artist` takes over and the pitch signs as the artist. Never the email local part. `PitchRequest.sender_name` is annotated `str` but already receives `None` in tests — widen it to `str | None`, which is what it has always been.
+
+The test must assert on what the *route* passes, not on a hand-written request, since that gap is what hid this.
 
 <!-- PLAN COMPLETE -->
 
