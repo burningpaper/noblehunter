@@ -131,6 +131,37 @@ class TestReading:
         assert parsed.body_text == "Yes please, send it over."
         assert parsed.quoted_text.startswith("On Tue, 15 Sep 2026")
 
+    def test_a_wrapped_attribution_line_still_splits(self):
+        # Gmail wraps a long "On ... wrote:" across two lines. Missing it would keep the whole
+        # quoted thread in the body, and the Inbox would show it repeated down the page.
+        body = (
+            "Yes please, send it over.\n\n"
+            "On Tue, 15 Sep 2026 at 09:12, Synman <synman@gmail.com>\n"
+            "wrote:\n"
+            "> Hi there, I have a track\n"
+        )
+
+        parsed = parse_message(gmail_payload(body=body))
+
+        assert parsed.body_text == "Yes please, send it over."
+        assert parsed.quoted_text.startswith("On Tue, 15 Sep 2026")
+
+    def test_a_reply_quoted_with_chevrons_alone_still_splits(self):
+        body = "Sounds good.\n\n> Hi there, I have a track\n> called Glass Weather\n"
+
+        parsed = parse_message(gmail_payload(body=body))
+
+        assert parsed.body_text == "Sounds good."
+        assert parsed.quoted_text.startswith("> Hi there")
+
+    def test_the_word_wrote_in_a_sentence_is_not_a_quote(self):
+        body = "I wrote: this is still my own message, honestly."
+
+        parsed = parse_message(gmail_payload(body=body))
+
+        assert parsed.body_text == body
+        assert parsed.quoted_text is None
+
     def test_an_html_only_message_becomes_readable_text(self):
         html = "<p>Hi <b>there</b></p><p>Send it</p>"
 

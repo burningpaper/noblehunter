@@ -1359,7 +1359,7 @@ Create `tests/test_mime.py`:
 
 import base64
 from datetime import UTC, datetime
-from email import message_from_bytes
+from email import message_from_bytes, policy
 
 import pytest
 
@@ -1473,7 +1473,7 @@ class TestReading:
         assert parsed.subject == "A track for Glitch Garden"
         assert parsed.body_text == "Hi there\n\nSynman"
         assert parsed.quoted_text is None
-        assert parsed.sent_at == datetime(2026, 9, 6, 22, 26, 40, tzinfo=UTC)
+        assert parsed.sent_at == datetime(2026, 9, 10, 0, 26, 40, tzinfo=UTC)
         assert parsed.message_id_header == "<abc@mail.gmail.com>"
 
     def test_quoted_history_is_split_off(self):
@@ -1487,6 +1487,37 @@ class TestReading:
 
         assert parsed.body_text == "Yes please, send it over."
         assert parsed.quoted_text.startswith("On Tue, 15 Sep 2026")
+
+    def test_a_wrapped_attribution_line_still_splits(self):
+        # Gmail wraps a long "On ... wrote:" across two lines. Missing it would keep the whole
+        # quoted thread in the body, and the Inbox would show it repeated down the page.
+        body = (
+            "Yes please, send it over.\n\n"
+            "On Tue, 15 Sep 2026 at 09:12, Synman <synman@gmail.com>\n"
+            "wrote:\n"
+            "> Hi there, I have a track\n"
+        )
+
+        parsed = parse_message(gmail_payload(body=body))
+
+        assert parsed.body_text == "Yes please, send it over."
+        assert parsed.quoted_text.startswith("On Tue, 15 Sep 2026")
+
+    def test_a_reply_quoted_with_chevrons_alone_still_splits(self):
+        body = "Sounds good.\n\n> Hi there, I have a track\n> called Glass Weather\n"
+
+        parsed = parse_message(gmail_payload(body=body))
+
+        assert parsed.body_text == "Sounds good."
+        assert parsed.quoted_text.startswith("> Hi there")
+
+    def test_the_word_wrote_in_a_sentence_is_not_a_quote(self):
+        body = "I wrote: this is still my own message, honestly."
+
+        parsed = parse_message(gmail_payload(body=body))
+
+        assert parsed.body_text == body
+        assert parsed.quoted_text is None
 
     def test_an_html_only_message_becomes_readable_text(self):
         html = "<p>Hi <b>there</b></p><p>Send it</p>"
@@ -1518,7 +1549,8 @@ class TestReading:
             subject="A track for Glitch Garden",
             body=body,
         )
-        sent = message_from_bytes(base64.urlsafe_b64decode(raw.encode()))
+        # policy.default, or this is a legacy Message with no `get_content()`.
+        sent = message_from_bytes(base64.urlsafe_b64decode(raw.encode()), policy=policy.default)
 
         parsed = parse_message(gmail_payload(body=sent.get_content(), subject=sent["Subject"]))
 
@@ -1555,8 +1587,17 @@ from email.message import EmailMessage
 from email.utils import parseaddr
 from html.parser import HTMLParser
 
-# "On <date> X wrote:", the line Gmail and most clients put above quoted history.
-QUOTE_START = re.compile(r"^(On .{5,120}wrote:|-{2,} ?Original Message ?-{2,}|_{10,})\s*$", re.MULTILINE)
+# Where quoted history begins. Three shapes, because clients differ:
+#
+# - the "On <date> X wrote:" attribution. Gmail *wraps* this when it's long, so the pattern
+#   crosses newlines rather than assuming one line -- otherwise a real reply keeps the whole
+#   thread in its body and the Inbox shows the same paragraphs over and over;
+# - the divider some clients use instead;
+# - chevrons alone, from a client that writes no attribution line at all.
+ATTRIBUTION = re.compile(r"^On\s[\s\S]{5,200}?\bwrote:[ \t]*$", re.MULTILINE)
+DIVIDER = re.compile(r"^(-{2,} ?Original Message ?-{2,}|_{10,})[ \t]*$", re.MULTILINE)
+CHEVRON = re.compile(r"^>", re.MULTILINE)
+QUOTE_PATTERNS = (ATTRIBUTION, DIVIDER, CHEVRON)
 
 
 class HeaderProblem(ValueError):
@@ -1656,10 +1697,16 @@ def _as_text(body: str, is_html: bool) -> str:
 
 
 def _split_quoted(text: str) -> tuple[str, str | None]:
-    match = QUOTE_START.search(text)
-    if match is None:
+    """What the person wrote, and the thread they were replying to.
+
+    Whichever marker comes first wins: a reply often carries an attribution line *and* chevrons,
+    and the quote starts at the earliest of them.
+    """
+    starts = [found.start() for found in (pattern.search(text) for pattern in QUOTE_PATTERNS) if found]
+    if not starts:
         return text.strip(), None
-    return text[: match.start()].strip(), text[match.start() :].strip() or None
+    start = min(starts)
+    return text[:start].strip(), text[start:].strip() or None
 
 
 class _TextOnly(HTMLParser):
@@ -1686,7 +1733,9 @@ def _strip_html(html: str) -> str:
 
 Run: `uv run pytest tests/test_mime.py -q`
 
-Expected: 12 passed. The `sent_at` assertion pins the epoch conversion; if it fails, check the test's `internal_ms` against `datetime.fromtimestamp(1_789_000_000, tz=UTC)` rather than loosening the assertion.
+Expected: 15 passed. The `sent_at` assertion pins the epoch conversion; if it fails, check the test's `internal_ms` against `datetime.fromtimestamp(1_789_000_000, tz=UTC)` rather than loosening the assertion.
+
+The three quote-splitting tests are the ones that matter for real mail: every client marks quoted history differently, and getting this wrong means the Inbox shows the same paragraphs repeated down the page.
 
 - [ ] **Step 5: Run the suite, lint and commit**
 

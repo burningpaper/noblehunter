@@ -18,8 +18,17 @@ from email.message import EmailMessage
 from email.utils import parseaddr
 from html.parser import HTMLParser
 
-# "On <date> X wrote:", the line Gmail and most clients put above quoted history.
-QUOTE_START = re.compile(r"^(On .{5,120}wrote:|-{2,} ?Original Message ?-{2,}|_{10,})\s*$", re.MULTILINE)
+# Where quoted history begins. Three shapes, because clients differ:
+#
+# - the "On <date> X wrote:" attribution. Gmail *wraps* this when it's long, so the pattern
+#   crosses newlines rather than assuming one line -- otherwise a real reply keeps the whole
+#   thread in its body and the Inbox shows the same paragraphs over and over;
+# - the divider some clients use instead;
+# - chevrons alone, from a client that writes no attribution line at all.
+ATTRIBUTION = re.compile(r"^On\s[\s\S]{5,200}?\bwrote:[ \t]*$", re.MULTILINE)
+DIVIDER = re.compile(r"^(-{2,} ?Original Message ?-{2,}|_{10,})[ \t]*$", re.MULTILINE)
+CHEVRON = re.compile(r"^>", re.MULTILINE)
+QUOTE_PATTERNS = (ATTRIBUTION, DIVIDER, CHEVRON)
 
 
 class HeaderProblem(ValueError):
@@ -119,10 +128,16 @@ def _as_text(body: str, is_html: bool) -> str:
 
 
 def _split_quoted(text: str) -> tuple[str, str | None]:
-    match = QUOTE_START.search(text)
-    if match is None:
+    """What the person wrote, and the thread they were replying to.
+
+    Whichever marker comes first wins: a reply often carries an attribution line *and* chevrons,
+    and the quote starts at the earliest of them.
+    """
+    starts = [found.start() for found in (pattern.search(text) for pattern in QUOTE_PATTERNS) if found]
+    if not starts:
         return text.strip(), None
-    return text[: match.start()].strip(), text[match.start() :].strip() or None
+    start = min(starts)
+    return text[:start].strip(), text[start:].strip() or None
 
 
 class _TextOnly(HTMLParser):
