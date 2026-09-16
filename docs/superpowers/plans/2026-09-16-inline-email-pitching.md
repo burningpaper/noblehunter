@@ -2163,7 +2163,6 @@ Create `tests/test_web_mail.py`:
 ```python
 """Connecting a Gmail mailbox to a profile, sharing it, and disconnecting it."""
 
-import re
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -2393,8 +2392,6 @@ def _state_from(response) -> str:
     return query["state"][0]
 ```
 
-Add `import re` only if you use it; if the finished file doesn't, drop that import.
-
 - [ ] **Step 5: Write `web/mail.py`**
 
 ```python
@@ -2408,8 +2405,8 @@ The card and all three actions are ordinary profile routes: `require_profile` fi
 artist's card answers 404 like everything else.
 """
 
+import logging
 import secrets
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Protocol
 from urllib.parse import urlencode
@@ -2429,10 +2426,13 @@ from web.db import get_db
 from web.forms import form_id
 from web.templating import templates
 
+logger = logging.getLogger("noble_hunter.mail")
+
 router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
 FormText = Annotated[str, Form()]
 
+TOKEN_TIMEOUT_SECONDS = 30
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GMAIL_SCOPES = (
     "https://www.googleapis.com/auth/gmail.send",
@@ -2442,13 +2442,6 @@ SESSION_MAIL_CONNECT = "mail_connect"
 CONNECT_FAILED = "Google couldn't connect that mailbox. Try again, and pick the account you pitch from."
 
 
-@dataclass(frozen=True)
-class Connected:
-    refresh_token: str
-    address: str
-    history_id: str
-
-
 class MailExchange(Protocol):
     """Swaps Google's one-time code for a refresh token, the address and a starting history id."""
 
@@ -2456,10 +2449,9 @@ class MailExchange(Protocol):
 
 
 class GoogleMailExchange:
-    def __init__(self, client_id: str, client_secret: str, redirect_uri_name: str = "mail_callback"):
+    def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.redirect_uri_name = redirect_uri_name
         self._redirect_uri = ""
 
     def for_redirect(self, redirect_uri: str) -> "GoogleMailExchange":
@@ -2467,7 +2459,7 @@ class GoogleMailExchange:
         return self
 
     def exchange(self, code: str) -> tuple[str, str, str]:
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=TOKEN_TIMEOUT_SECONDS) as client:
             response = client.post(
                 ACCESS_TOKEN_URL,
                 data={
@@ -2478,9 +2470,15 @@ class GoogleMailExchange:
                     "redirect_uri": self._redirect_uri,
                 },
             )
-            if response.status_code != 200 or "refresh_token" not in response.json():
+            try:
+                payload = response.json() if response.status_code == 200 else {}
+            except ValueError:
+                payload = {}  # an HTML error page, not the token we asked for
+            refresh_token = str(payload.get("refresh_token") or "")
+            if not refresh_token:
+                # No refresh token means offline access wasn't granted, so there'd be nothing to
+                # store: Google only sends one when consent is fresh.
                 raise MailboxProblem(CONNECT_FAILED)
-            refresh_token = str(response.json()["refresh_token"])
             gmail = Gmail(
                 client,
                 client_id=self.client_id,
@@ -2516,7 +2514,13 @@ def start_connect(request: Request, profile_id: int, db: DbSession, viewer: Curr
 
 
 @router.get("/mail/callback", name="mail_callback")
-def finish_connect(request: Request, db: DbSession, viewer: CurrentViewer, state: str = "", code: str = "") -> Response:
+def finish_connect(
+    request: Request,
+    db: DbSession,
+    viewer: CurrentViewer,
+    state: str = "",
+    code: str = "",
+) -> Response:
     pending = request.session.get(SESSION_MAIL_CONNECT) or {}
     if not state or not secrets.compare_digest(state, str(pending.get("state", ""))):
         raise NotVisible("No mailbox connection is waiting")
@@ -2530,6 +2534,9 @@ def finish_connect(request: Request, db: DbSession, viewer: CurrentViewer, state
     try:
         refresh_token, address, history_id = exchange.exchange(code)
     except Exception:
+        # Deliberately broad: the exchange can fail through httpx, Google's payload, or our own
+        # guard, and the person needs the same sentence either way. Logged so it isn't silent.
+        logger.warning("Connecting a mailbox failed at the token exchange", exc_info=True)
         return _card(request, db, profile, notice=CONNECT_FAILED)
 
     mailbox = connect_mailbox(
