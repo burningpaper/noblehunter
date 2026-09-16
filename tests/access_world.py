@@ -20,6 +20,7 @@ from core.models import (
     Artist,
     ArtistMember,
     Curator,
+    EmailMessage,
     MailAccount,
     Outreach,
     Profile,
@@ -34,6 +35,7 @@ from core.models import (
 )
 from tests.factories import (
     make_artist,
+    make_contact,
     make_curator,
     make_mailbox,
     make_member,
@@ -42,7 +44,15 @@ from tests.factories import (
     make_user,
 )
 from tests.profile_helpers import add_contents
-from tests.web_helpers import FakeSuggester, app_client, member_client, sign_in, web_settings
+from tests.web_helpers import (
+    FakeGmailSender,
+    FakePitchWriter,
+    FakeSuggester,
+    app_client,
+    member_client,
+    sign_in,
+    web_settings,
+)
 
 NIGHT = date(2026, 9, 15)
 THEIR_ARTIST, THEIR_PROFILE, THEIR_BRIEF = "Their Artist", "Their Profile", "Their secret brief"
@@ -53,6 +63,14 @@ NIGHT_IN_NUMBERS = "The night in numbers"
 # Mail is configured in this world, so the Pitch mailbox routes really run. Otherwise an
 # outsider's 404 on them could come from a missing MAIL_TOKEN_KEY rather than the access check.
 MAIL_KEY = Fernet.generate_key().decode()
+THEIR_CURATOR_EMAIL = "nina@broken-machines.com"
+
+
+class _RefusingGmail:
+    """Any send reaching this in an access walk is a leak; fail loudly rather than over the network."""
+
+    def send(self, raw: str, *, thread_id: str | None = None):
+        raise AssertionError("An access walk reached Gmail; a send leaked past require_outreach")
 
 
 def world_settings():
@@ -83,6 +101,9 @@ def build_world(session: Session) -> World:
     session.flush()
     owner = make_member(session, theirs, make_user(session, "them@example.com"))
     outreach = make_outreach(session, make_curator(session), profile, NIGHT, brief_text=THEIR_BRIEF)
+    # An address a leaked send would really write to, on a mailbox they really pitch from.
+    make_contact(session, outreach.curator, "email", THEIR_CURATOR_EMAIL)
+    session.flush()
     _add_failed_run_with_counts(session, profile.id)
 
     mine = make_artist(session, "My Artist")
@@ -124,12 +145,30 @@ def _add_failed_run_with_counts(session: Session, profile_id: int) -> None:
 
 
 def outsider_client(session: Session, suggester: FakeSuggester) -> TestClient:
-    return member_client(session, OUTSIDER_EMAIL, suggester=suggester, settings=world_settings())
+    return member_client(
+        session,
+        OUTSIDER_EMAIL,
+        suggester=suggester,
+        settings=world_settings(),
+        pitch_writer=FakePitchWriter(),
+        # Nothing the outsider posts should ever reach Gmail; if it does, say so loudly rather
+        # than open a socket to Google.
+        gmail_for=lambda mailbox, cipher, settings, http: _RefusingGmail(),
+    )
 
 
 def admin_client(session: Session, suggester: FakeSuggester | None = None) -> TestClient:
     """Signed in as the admin. Sign in before taking a snapshot: signing in writes the user row."""
-    client = app_client(session, suggester=suggester or FakeSuggester(), settings=world_settings())
+    # The admin is allowed to send, and the positive control needs the send to land somewhere --
+    # on a fake that records it, never on Google.
+    sender = FakeGmailSender()
+    client = app_client(
+        session,
+        suggester=suggester or FakeSuggester(),
+        settings=world_settings(),
+        pitch_writer=FakePitchWriter(),
+        gmail_for=lambda mailbox, cipher, settings, http: sender,
+    )
     sign_in(client)
     return client
 
@@ -141,6 +180,12 @@ def seed_route_state(session: Session, world: World, method: str, path: str) -> 
         profile.is_active = False
     elif (method, path) == ("POST", "/profiles/{profile_id}/pause"):
         profile.is_active = True
+    elif (method, path) in {
+        ("POST", "/outreach/{outreach_id}/pitch/save"),
+        ("POST", "/outreach/{outreach_id}/pitch/send"),
+    }:
+        entry = session.get(Outreach, world.outreach_id)
+        entry.draft_subject, entry.draft_body = "Their subject", "Their draft"
     elif (method, path) == ("POST", "/profiles/{profile_id}/mail/attach"):
         # Point them at a different mailbox, so attaching the one the walk posts really moves it.
         spare = make_mailbox(session, session.get(Artist, world.artist_id), address="spare@gmail.com")
@@ -198,6 +243,8 @@ def their_data(session: Session, world: World) -> dict:
             for box in session.scalars(select(MailAccount).where(MailAccount.artist_id == world.artist_id))
         ),
         "outreach": (outreach.status, outreach.status_changed_at, outreach.pitched_at, outreach.notes),
+        "outreach_draft": (outreach.draft_subject, outreach.draft_body, outreach.gmail_thread_id),
+        "email_messages": session.scalar(select(func.count()).select_from(EmailMessage)),
         "curator": (curator.excluded_at, curator.exclusion_reason),
         "budget": nightly_claude_budget(session),
         "artists": sorted(

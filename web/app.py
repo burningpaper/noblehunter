@@ -9,6 +9,7 @@ then the signed session cookie, then the sign-in/CSRF guard, then the routes.
 """
 
 import logging
+from collections.abc import Callable
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -16,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
+from core.pitch_writer import ClaudePitchWriter, PitchWriter
 from core.settings import MissingSettingError
 from core.suggestions import ClaudeSuggester, Suggester
 from web.access import CurrentViewer, current_viewer, install_access_handlers, wants_html
@@ -25,9 +27,10 @@ from web.budget import router as budget_router
 from web.db import build_engine
 from web.digest import router as digest_router
 from web.guard import install_guard
-from web.mail import MailExchange, google_mail_exchange
+from web.mail import MailExchange, gmail_for_mailbox, google_mail_exchange
 from web.mail import router as mail_router
 from web.people import router as people_router
+from web.pitches import router as pitches_router
 from web.profile_contents import router as profile_contents_router
 from web.profiles import router as profiles_router
 from web.runs import router as runs_router
@@ -66,6 +69,8 @@ def create_app(
     identity_provider: IdentityProvider | None = None,
     suggester: Suggester | None = None,
     mail_exchange: MailExchange | None = None,
+    pitch_writer: PitchWriter | None = None,
+    gmail_for: Callable[..., object] | None = None,
 ) -> FastAPI:
     app = _base_app()
     app.state.settings = settings
@@ -73,11 +78,15 @@ def create_app(
     app.state.identity_provider = identity_provider or google_provider(settings)
     app.state.suggester = suggester or _claude_suggester(settings)
     app.state.mail_exchange = mail_exchange or google_mail_exchange(settings)
+    app.state.pitch_writer = pitch_writer or _claude_pitch_writer(settings)
+    # One Gmail client per send, built from the mailbox's own token. Tests pass a fake.
+    app.state.gmail_for = gmail_for or gmail_for_mailbox
     install_access_handlers(app)
     app.include_router(auth_router)  # sign-in and sign-out must work for someone without access
     signed_in = [Depends(current_viewer)]
     for router in (
         digest_router,
+        pitches_router,
         profiles_router,
         profile_contents_router,
         suggestions_router,
@@ -115,6 +124,13 @@ def _claude_suggester(settings: WebSettings) -> Suggester | None:
     if settings.anthropic_api_key is None:
         return None
     return ClaudeSuggester.from_api_key(settings.anthropic_api_key.get_secret_value())
+
+
+def _claude_pitch_writer(settings: WebSettings) -> PitchWriter | None:
+    """Drafting a pitch needs ANTHROPIC_API_KEY. Without it the panel still composes by hand."""
+    if settings.anthropic_api_key is None:
+        return None
+    return ClaudePitchWriter.from_api_key(settings.anthropic_api_key.get_secret_value())
 
 
 def create_unconfigured_app() -> FastAPI:

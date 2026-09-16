@@ -1,0 +1,94 @@
+{# Writing one pitch. Swapped in place by write, save and send; send also swaps the entry's status tag. #}
+<div class="pitch" id="pitch-body-{{ outreach.id }}">
+  {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="field__error" role="alert">{{ error }}</p>{% endif %}
+
+  {% if address_error %}
+  <p class="field__hint">{{ address_error }} Use the contact route on the card instead.</p>
+  {% elif not mail_configured %}
+  <p class="field__hint">Email pitching isn't switched on: MAIL_TOKEN_KEY isn't set for this app.</p>
+  {% elif not mailbox %}
+  <p class="field__hint">
+    {{ profile.name }} isn't pitching from a mailbox yet.
+    <a href="/profiles/{{ profile.id }}">Connect one on the profile</a>.
+  </p>
+  {% else %}
+  <p class="pitch__addresses">
+    From <strong>{{ mailbox.address }}</strong> to <strong>{{ address }}</strong>
+  </p>
+
+  <form class="form" hx-target="#pitch-{{ outreach.id }}" hx-swap="innerHTML" hx-disabled-elt="find button"
+        novalidate>
+    {% if tracks %}
+    <div class="field">
+      <label class="field__label" for="pitch-track-{{ outreach.id }}">Track to pitch</label>
+      <select class="input" id="pitch-track-{{ outreach.id }}" name="track_id">
+        {% for track in tracks %}
+        <option value="{{ track.id }}" {% if track.id == draft_track_id %}selected{% endif %}>{{ track.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    {% if can_write %}
+    <div class="field">
+      <label class="field__label" for="pitch-instruction-{{ outreach.id }}">Ask Claude for a draft</label>
+      <input class="input" id="pitch-instruction-{{ outreach.id }}" name="instruction" autocomplete="off"
+             placeholder="e.g. shorter, and mention the Autechre track">
+      <button class="button button--ghost button--small" type="button"
+              hx-post="/outreach/{{ outreach.id }}/pitch/write" hx-include="closest form">
+        Draft it
+        <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+    {% else %}
+    <p class="field__hint">{{ no_writer_note }}</p>
+    {% endif %}
+
+    <div class="field">
+      <label class="field__label" for="pitch-subject-{{ outreach.id }}">Subject</label>
+      <input class="input" id="pitch-subject-{{ outreach.id }}" name="subject" value="{{ subject }}"
+             maxlength="200" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="pitch-body-text-{{ outreach.id }}">Message</label>
+      <textarea class="input pitch__body" id="pitch-body-text-{{ outreach.id }}" name="body" rows="12">{{ body }}</textarea>
+    </div>
+
+    <input type="hidden" name="send_key" value="{{ send_key }}">
+    <div class="form__actions">
+      <button class="button button--ghost" type="button" hx-post="/outreach/{{ outreach.id }}/pitch/save"
+              hx-include="closest form">
+        Save draft
+        <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      </button>
+      <button class="button button--primary" type="button" hx-post="/outreach/{{ outreach.id }}/pitch/send"
+              hx-include="closest form"
+              hx-confirm="Send this to {{ address }}?">
+        Send
+        <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if messages %}
+  <ol class="pitch__thread" role="list">
+    {% for message in messages %}
+    <li class="pitch__message pitch__message--{{ message.direction }}">
+      <p class="pitch__message-meta">
+        {% if message.direction == "out" %}Sent to {{ message.to_address }}{% else %}From {{ message.from_address }}{% endif %}
+        · {{ message.sent_at.strftime("%-d %b, %H:%M") }}
+      </p>
+      <p class="pitch__message-body">{{ message.body_text }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+</div>
+
+{% if swap_status %}
+{# The entry card is already on screen; keep its status tag in step without reloading the digest. #}
+<span class="tag tag--status" id="entry-status-{{ outreach.id }}" hx-swap-oob="true">{{ status_label }}</span>
+{% endif %}

@@ -139,7 +139,9 @@ class TestVerdicts:
         response = htmx_post(client, f"/outreach/{outreach.id}/verdict", {"verdict": "pitched"})
 
         assert response.status_code == 200
-        assert 'class="tag tag--status">Pitched' in response.text
+        assert f'id="entry-status-{outreach.id}">' in response.text
+        assert "tag--empty" not in response.text  # the tag carries a verdict now, so it shows
+        assert "Pitched" in response.text
         assert session.get(Outreach, outreach.id).status == "pitched"
         assert session.get(Outreach, outreach.id).pitched_at is not None
 

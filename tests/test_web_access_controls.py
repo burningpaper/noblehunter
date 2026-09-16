@@ -73,8 +73,8 @@ def test_an_admin_opening_the_same_page_gets_it(session, world, method, path):
         assert THEIR_PROFILE in response.text
 
 
-def test_the_read_routes_are_the_nine_gets():
-    assert len(READ_ROUTES) == 9
+def test_the_read_routes_are_the_ten_gets():
+    assert len(READ_ROUTES) == 10
     assert {path for _, path in READ_ROUTES} >= SHOWS_THEIR_PROFILE
 
 

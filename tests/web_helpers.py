@@ -5,6 +5,7 @@ import re
 from fastapi.testclient import TestClient
 from starlette.responses import RedirectResponse
 
+from core.pitch_writer import Pitch
 from web.app import create_app
 from web.db import get_db
 from web.settings import WebSettings
@@ -92,3 +93,33 @@ class FakeSuggester:
         if self.error:
             raise self.error
         return list(self.suggestions)
+
+
+class FakePitchWriter:
+    """Stands in for Claude drafting a pitch: returns a canned draft, or raises."""
+
+    def __init__(self, subject: str = "A draft subject", body: str = "A draft body", error=None):
+        self.subject = subject
+        self.body = body
+        self.error = error
+        self.calls: list = []
+
+    def write(self, request):
+        self.calls.append(request)
+        if self.error:
+            raise self.error
+        return Pitch(subject=self.subject, body=self.body)
+
+
+class FakeGmailSender:
+    """Stands in for one mailbox's Gmail access, and remembers every message it was given."""
+
+    def __init__(self, error=None):
+        self.sent: list[tuple[str, str | None]] = []
+        self.error = error
+
+    def send(self, raw: str, *, thread_id: str | None = None) -> tuple[str, str]:
+        if self.error:
+            raise self.error
+        self.sent.append((raw, thread_id))
+        return f"msg{len(self.sent)}", thread_id or "thread1"

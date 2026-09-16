@@ -116,6 +116,16 @@ def google_mail_exchange(settings: WebSettings) -> MailExchange:
     return GoogleMailExchange(settings.google_client_id, settings.google_client_secret.get_secret_value())
 
 
+def gmail_for_mailbox(mailbox: MailAccount, cipher, settings, http: httpx.Client) -> Gmail:
+    """One mailbox's Gmail access, on the caller's HTTP client so the socket is closed after."""
+    return Gmail(
+        http,
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret.get_secret_value(),
+        refresh_token=refresh_token_for(mailbox, cipher),
+    )
+
+
 @router.get("/profiles/{profile_id}/mail/connect")
 def start_connect(request: Request, profile_id: int, db: DbSession, viewer: CurrentViewer) -> Response:
     profile = require_profile(db, viewer, profile_id)

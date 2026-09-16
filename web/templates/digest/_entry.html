@@ -5,9 +5,10 @@
     <h3 class="digest-entry__title" id="entry-{{ entry.outreach_id }}-title">
       <a href="{{ entry.playlist_url }}" target="_blank" rel="noopener noreferrer">{{ entry.playlist_name }}</a>
     </h3>
-    {% if entry.status != "new" %}
-    <span class="tag tag--status">{{ verdict_labels.get(entry.status, entry.status) }}</span>
-    {% endif %}
+    {# Always rendered, empty when there's no verdict yet: sending a pitch swaps this out of band. #}
+    <span class="tag tag--status{% if entry.status == 'new' %} tag--empty{% endif %}" id="entry-status-{{ entry.outreach_id }}">
+      {% if entry.status != "new" %}{{ verdict_labels.get(entry.status, entry.status) }}{% endif %}
+    </span>
   </header>
 
   <p class="digest-entry__meta">
@@ -50,4 +51,12 @@
     </button>
     {% endfor %}
   </div>
+
+  <details class="digest-entry__pitch">
+    <summary class="digest-entry__pitch-summary">Write a pitch</summary>
+    <div id="pitch-{{ entry.outreach_id }}" hx-get="/outreach/{{ entry.outreach_id }}/pitch"
+         hx-trigger="toggle once from:closest details" hx-swap="innerHTML">
+      <p class="field__hint">Loading…</p>
+    </div>
+  </details>
 </article>

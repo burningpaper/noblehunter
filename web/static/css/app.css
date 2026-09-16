@@ -1544,6 +1544,85 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* ---- Pitching by email --------------------------------------------------------------- */
+
+/* The entry's status tag always exists so a send can swap it out of band; until there is a
+   verdict it has nothing to say, so it takes up no room. */
+.tag--empty {
+  display: none;
+}
+
+.digest-entry__pitch {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.digest-entry__pitch-summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.digest-entry__pitch-summary:hover {
+  color: var(--color-text);
+}
+
+.digest-entry__pitch-summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.pitch {
+  margin-top: var(--space-4);
+}
+
+.pitch__addresses {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.pitch__body {
+  min-height: 12rem;
+  padding: var(--space-3);
+  font: inherit;
+  line-height: var(--leading-body);
+  resize: vertical;
+}
+
+.pitch__thread {
+  display: grid;
+  gap: var(--space-4);
+  margin: var(--space-6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pitch__message {
+  border-left: 2px solid var(--color-border);
+  padding-left: var(--space-3);
+}
+
+.pitch__message--in {
+  border-left-color: var(--color-accent);
+}
+
+.pitch__message-meta {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.pitch__message-body {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Small screens: keep the header on one line ---------------------------------------- */
 
 .wordmark,
