@@ -286,7 +286,9 @@ database. Without the key, mail is simply switched off rather than half-working.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
-Expected: 1437 passed, 5 skipped (1430 plus 7).
+Expected: 1440 passed, 5 skipped (1430, plus 8 from `test_mail_crypto.py` — the parametrized test collects three — plus one settings test each side).
+
+One collision this task will hit: `tests/test_settings.py::test_repr_never_leaks_password` asserts the bare substring `"secret"` is absent from `Settings`' repr, and the new **field name** `google_client_secret` contains it. No value leaks — `SecretStr` masking still works — and the field must keep that name to match `GOOGLE_CLIENT_SECRET`. Fix the test by giving its sentinel password a distinctive value (not the word "secret"), keeping the assertion's intent, and leave a comment saying why.
 
 ---
 
@@ -5038,6 +5040,8 @@ The web app can't poll Gmail: a Vercel function lives for seconds and nobody is 
 ```
 
 In `.env.example`, under the mail section Task 1 added, note that the Mac Mini needs the same three values as the web app.
+
+Watch for the same collision Task 1 hit: if `tests/test_pipeline_settings.py` asserts that the bare word `"secret"` is absent from a repr, the new `google_client_secret` **field name** will trip it. Fix it the same way — give the sentinel value a distinctive string rather than loosening the assertion.
 
 - [ ] **Step 2: Write the failing test**
 
