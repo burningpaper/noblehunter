@@ -19,13 +19,15 @@ OK, FORBIDDEN, NOT_FOUND = 200, 403, 404
 OUT_OF_RANGE = MAX_POSTGRES_INT + 1
 STATIC_MOUNT = "/static"
 
-# Usable without access to any artist: signing in and out, and the health check.
+# Usable without access to any artist: signing in and out, the health check, and the favicon,
+# which a browser asks for before anyone has signed in and which answers an empty 204.
 EXEMPT = {
     ("GET", "/login"),
     ("GET", "/auth/google"),
     ("GET", "/auth/callback"),
     ("POST", "/logout"),
     ("GET", "/health"),
+    ("GET", "/favicon.ico"),
 }
 
 # What a signed-in member of a *different* artist gets, using the other artist's real ids.

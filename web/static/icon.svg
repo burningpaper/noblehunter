@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The nav's mark, standing on its own. A static file can't read a CSS variable, so the
+       value of --color-accent in css/app.css is written out here; change the two together.
+       The circle nearly fills the canvas so it still reads as a dot at 16px. -->
+  <circle cx="16" cy="16" r="15" fill="#c6f36b"/>
+</svg>

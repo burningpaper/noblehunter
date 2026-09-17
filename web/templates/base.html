@@ -9,6 +9,10 @@
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "422", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
   <title>{% block title %}Noble Hunter{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/app.css">
+  {# Declaring the icon stops most browsers asking for /favicon.ico at all. The apple-touch-icon
+     is the same file: without one, a home-screen bookmark on a phone falls back to a screenshot. #}
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
   <script src="/static/vendor/htmx.min.js" defer></script>
   {# Here rather than on one page: any page may render a <time>, and the pitch panel that renders
      them appears on both the digest and the Inbox. A file, not an inline script, because our CSP

@@ -103,6 +103,16 @@ def create_app(
     def health() -> dict:
         return {"status": "ok", "configured": True}
 
+    @app.get("/favicon.ico")
+    def favicon() -> Response:
+        """Nothing lives here: the icon is declared as an SVG in the page's <head>.
+
+        Every path on Vercel routes to this app, so a browser still asking for the legacy path
+        would otherwise fall through to the catch-all and be sent the full styled "Page not
+        found" page. An empty 204 is the quiet answer to a request no person ever reads.
+        """
+        return Response(status_code=204)
+
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request, viewer: CurrentViewer) -> Response:
         return templates.TemplateResponse(request, "home.html")

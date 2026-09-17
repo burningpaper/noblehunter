@@ -16,7 +16,9 @@ from web.sessions import SESSION_CSRF, current_user
 
 logger = logging.getLogger("noble_hunter.web.guard")
 
-PUBLIC_PATHS = frozenset({"/health", "/login", "/auth/google", "/auth/callback"})
+# /favicon.ico is public because a browser asks for it before anyone has signed in; behind the
+# guard it would answer the icon request with a redirect to the sign-in page.
+PUBLIC_PATHS = frozenset({"/health", "/login", "/auth/google", "/auth/callback", "/favicon.ico"})
 PUBLIC_PREFIXES = ("/static/",)
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
