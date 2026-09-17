@@ -154,6 +154,61 @@ class TestAsking:
         assert "None" not in messages.calls[0]["messages"][0]["content"]
 
 
+class TestTheSubjectLine:
+    # A real pitch was about to go to a real curator titled "Human Error cdot for Neoclassical
+    # Music Gems". The subject is the line that decides whether a cold email gets opened, and it
+    # is the one line nobody rereads, so a typesetting artifact there costs more than its size.
+
+    def test_a_bare_latex_artifact_is_dropped(self):
+        # No backslash anywhere -- the model wrote the command name as a word. This is the shape
+        # that actually escaped: strict json.loads would have refused an unescaped backslash.
+        answer = json.dumps({"subject": "Human Error cdot for Neoclassical Music Gems", "body": "Hi Nina,"})
+        writer, _messages = writer_with(answer)
+
+        assert writer.write(REQUEST).subject == "Human Error for Neoclassical Music Gems"
+
+    def test_a_real_backslash_command_is_dropped_too(self):
+        # The model escaped the backslash, so this is valid JSON and a genuine "\cdot" arrives.
+        answer = json.dumps({"subject": "Human Error \\cdot for Neoclassical Music Gems", "body": "Hi Nina,"})
+        writer, _messages = writer_with(answer)
+
+        assert writer.write(REQUEST).subject == "Human Error for Neoclassical Music Gems"
+
+    def test_a_track_whose_title_contains_a_denylisted_word_survives(self):
+        # The guard must not be worse than the bug. "Bullet" here is half a title, not a stray
+        # command name, and a subject that loses the track's name is a worse email than one
+        # carrying a stray word.
+        answer = json.dumps({"subject": "Bullet Train for Broken Machines", "body": "Hi Nina,"})
+        writer, _messages = writer_with(answer)
+
+        assert writer.write(REQUEST).subject == "Bullet Train for Broken Machines"
+
+    def test_a_track_called_quad_survives_too(self):
+        answer = json.dumps({"subject": "Quad for Broken Machines", "body": "Hi Nina,"})
+        writer, _messages = writer_with(answer)
+
+        assert writer.write(REQUEST).subject == "Quad for Broken Machines"
+
+    def test_dropping_an_artifact_leaves_no_double_space(self):
+        answer = json.dumps({"subject": "Kelvin mdash Broken Machines", "body": "Hi Nina,"})
+        writer, _messages = writer_with(answer)
+
+        subject = writer.write(REQUEST).subject
+
+        assert subject == "Kelvin Broken Machines"
+        assert "  " not in subject
+
+    def test_the_body_is_left_exactly_as_claude_wrote_it(self):
+        # The body is long-form prose the musician reads and edits before anything is sent, so a
+        # stray word there is visible and harmless. Quietly deleting from someone's draft is the
+        # worse failure, so the guard stops at the subject.
+        body = "Hi Nina,\n\nKelvin cdot sits next to Autechre.\n\nJarred"
+        answer = json.dumps({"subject": "Kelvin for Broken Machines", "body": body})
+        writer, _messages = writer_with(answer)
+
+        assert writer.write(REQUEST).body == body
+
+
 class TestThePlainDraft:
     def test_it_names_the_playlist_the_curator_and_a_track(self):
         pitch = template_pitch(REQUEST)

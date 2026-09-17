@@ -12,6 +12,7 @@ safe to show, and the page keeps the draft that was already in the box.
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
@@ -36,8 +37,10 @@ SYSTEM_PROMPT = (
     "this playlist: why this track belongs on it, using what the brief says about the playlist and the "
     "artists already on it. No flattery, no hype, no marketing voice, no bullet points, no attachments. "
     "Ask once, politely, and make it easy to say no. Six sentences at most, plus a sign-off.\n\n"
-    "Give a subject line under 80 characters that names the track and the playlist. Put the Spotify link "
-    "on its own line in the body. Never invent facts about the curator, the playlist or the music."
+    "Give a subject line under 80 characters that names the track and the playlist, in ordinary words "
+    "and ordinary punctuation -- no LaTeX, no markdown, no typographic control sequences, no special "
+    "characters standing in as a separator. Put the Spotify link on its own line in the body. Never "
+    "invent facts about the curator, the playlist or the music."
 )
 
 ANSWER_SCHEMA = {
@@ -182,11 +185,38 @@ def _join(values) -> str:
     return ", ".join(_text(value) for value in values if value)
 
 
+# Typesetting a model reaches for when it has to join a track to a playlist and nobody told it how.
+# The backslash forms are unambiguous evidence, so anything shaped like a command goes, and a lone
+# backslash before punctuation loses the backslash and keeps the punctuation ("\&" -> "&").
+#
+# The bare words are the ones that actually got out, and they are matched in lowercase only. Every
+# one is a LaTeX command name, which a model drops in lowercase; a real title capitalises. Matching
+# case-insensitively would take the track's name out of "Bullet Train for X" or leave a pitch for a
+# track called "Quad" with no track in the subject at all -- worse than the stray word it removes.
+_LATEX_COMMAND = re.compile(r"\\[a-zA-Z]+")
+_LATEX_ESCAPE = re.compile(r"\\(?![a-zA-Z])")
+_BARE_ARTIFACT = re.compile(r"\b(?:cdot|bullet|textbar|ndash|mdash|textbullet|quad|hspace)\b")
+
+
+def _clean_subject(subject: str) -> str:
+    """The subject with any typesetting artifact taken out and the gap closed up.
+
+    The subject only. It is the line that decides whether a cold email gets opened and the one line
+    nobody rereads, so a stray "cdot" there is worth removing unasked. The body is not touched: it
+    is long-form prose the musician reads and edits before anything is sent, so a stray word there
+    is visible and harmless, and quietly deleting from someone's draft is the worse failure.
+    """
+    cleaned = _LATEX_COMMAND.sub(" ", subject)
+    cleaned = _LATEX_ESCAPE.sub("", cleaned)
+    cleaned = _BARE_ARTIFACT.sub(" ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def _parse(response) -> tuple[str, str]:
     text = next((block.text for block in response.content if block.type == "text"), None)
     try:
         answer = json.loads(text or "")
-        subject = " ".join(str(answer["subject"]).split())
+        subject = _clean_subject(" ".join(str(answer["subject"]).split()))
         body = str(answer["body"]).strip()
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         logger.warning(
