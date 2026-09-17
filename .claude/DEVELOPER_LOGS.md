@@ -433,3 +433,27 @@ Two tests came first and were watched failing for their own reasons: no `<time>`
 Last, the audit, since one instance of a bug like this implies others. Every other datetime on the site goes through `relative_time` — "12 minutes ago", "in 5 hours" — which is a difference between two datetimes and therefore immune by construction, whatever zone anything is in. The digest's dates are `date` objects with no clock and no zone to get wrong. `core/inbox_view.py` does expose `last_at`, and it was the one real candidate; the Inbox renders only `days_since_last`, an integer, so it never prints a clock. The panel was the only place.
 
 The suite is 1797 passed, 6 skipped, and lint is clean. Nothing pushed, and migration 0007 still hasn't been applied to Neon.
+
+## 2026-09-17 (last): The missing icon that was reported as a broken login
+
+A user said he couldn't sign in. He was signed in perfectly well. What he was actually looking at was `noblehunter.vercel.app/favicon.ico` in his address bar and the full styled "Page not found" page underneath it — because the app had no icon, and on Vercel every path routes to FastAPI. The browser asked for a file nobody had put there, the catch-all did what it does with an unknown path, and the result was an error page wearing the app's own clothes. That is the part worth naming: a 404 that is *well designed* reads as a locked door rather than a missing file. It also meant every first-time visitor spent a serverless invocation rendering an error page for an icon.
+
+The fix is three small pieces, and what's interesting about each is the constraint that chose it.
+
+The icon is a hand-written SVG at `web/static/icon.svg`: a viewBox, one circle, nothing else. It is the dot that sits beside the wordmark in the nav, standing on its own. Its colour was *read* from `--color-accent` in `css/app.css` (`#c6f36b`) rather than eyeballed off a screenshot, because that token is what `.wordmark__mark` is painted with, and an icon that is nearly the brand colour is worse than one that is obviously wrong. A static file can't read a CSS variable, so the value is necessarily duplicated — and the honest thing to do with a duplicated constant is say so out loud. There's a comment in the SVG naming the token, and a test that re-reads `--color-accent` out of the stylesheet and asserts the icon still carries it. Change the token alone and the suite objects. The circle is r=15 in a 32 box, close to the edges on purpose: a dot floating in a wide margin dissolves at 16px, which is the only size that really matters.
+
+`base.html` declares it twice, as `rel="icon"` and as `apple-touch-icon`. The second isn't decoration. Both people using this thing are on phones, and without it a home-screen bookmark falls back to a screenshot of whatever page happened to be open.
+
+Then the legacy path. Declaring the link tag stops most modern browsers asking for `/favicon.ico` — but not all of them, and not a direct visit, which is exactly what the user had done. So `/favicon.ico` is now a route beside `/health`, answering 204 with an empty body. 204 rather than serving something, because the icon is already declared as SVG and there is no `.ico` to serve. 204 rather than a plain 404, because a 404 is precisely what rendered the error page in the first place. No person ever reads this response, so the right answer is the quietest true one.
+
+Two traps sat in this, and the tests found both rather than careful reading.
+
+The first was the guard. `web/guard.py` is default-deny — every path needs a session unless it's on the public list — so the shiny new route dutifully redirected the browser's icon request to the sign-in page. A redirect is not an icon, and it's the same shape of bug as the one being fixed: the app answering a machine's question with a page meant for a person. `/favicon.ico` joined `/health` and the sign-in paths in `PUBLIC_PATHS`, because a browser asks for it before anyone has signed in.
+
+The second was the access walk, behaving exactly as designed. `tests/route_walk.py` asserts every registered route is accounted for, so adding one without listing it failed `test_every_route_is_covered` with `Extra items in the left set: ('GET', '/favicon.ico')`. It went into `EXEMPT` beside `/health` — the list for routes usable without access to any artist — and deliberately not into `ROUTES`, because there is nothing per-artist here to get wrong. The point of that assertion is that access can't be forgotten quietly, and it wasn't.
+
+The CSP was checked rather than assumed, and needed nothing: `img-src 'self' data: ...` already covers a same-origin SVG. That check is now a test, which is the difference between "it happens to work" and "it will keep working" — because the failure mode of losing `'self'` from `img-src` is an icon that silently never appears, with no error anywhere for anyone to notice.
+
+Six tests, written first and watched failing: five for the right reasons (404s, and a missing link tag), and the CSP one green from the very start. That last one is the honest result of confirming a policy that was already correct, not a test bent into agreeing with itself.
+
+The suite is 1803 passed, 6 skipped, and lint is clean. Nothing pushed, and migration 0007 still hasn't been applied to Neon.
