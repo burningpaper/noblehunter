@@ -79,7 +79,11 @@
     <li class="pitch__message pitch__message--{{ message.direction }}">
       <p class="pitch__message-meta">
         {% if message.direction == "out" %}Sent to {{ message.to_address }}{% else %}From {{ message.from_address }}{% endif %}
-        · {{ message.sent_at.strftime("%-d %b, %H:%M") }}
+        {# The instant, not a clock reading. Only the browser knows the reader's zone -- Vercel
+           runs in UTC, and guessing from the artist breaks the moment someone travels. The text
+           is what's left if the script never runs, so it says UTC: an unlabelled wrong time is
+           the bug this replaced. web/static/js/localtime.js rewrites it, label and all. #}
+        · <time datetime="{{ message.sent_at.isoformat() }}">{{ utc_clock(message.sent_at) }} UTC</time>
       </p>
       <p class="pitch__message-body">{{ message.body_text }}</p>
     </li>

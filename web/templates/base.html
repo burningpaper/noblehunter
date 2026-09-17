@@ -10,6 +10,11 @@
   <title>{% block title %}Noble Hunter{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/vendor/htmx.min.js" defer></script>
+  {# Here rather than on one page: any page may render a <time>, and the pitch panel that renders
+     them appears on both the digest and the Inbox. A file, not an inline script, because our CSP
+     is script-src 'self'. It listens for htmx's events but never touches the htmx global, so it
+     doesn't care that defer runs it second. #}
+  <script src="/static/js/localtime.js" defer></script>
 </head>
 <body{% if csrf_token %} hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
   <a class="skip-link" href="#main">Skip to content</a>

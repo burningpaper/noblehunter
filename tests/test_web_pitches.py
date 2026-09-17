@@ -2,7 +2,7 @@
 
 import base64
 import re
-from datetime import date
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 from cryptography.fernet import Fernet
@@ -33,6 +33,7 @@ from tests.web_helpers import (
     sign_in,
     web_settings,
 )
+from web.templating import utc_clock
 
 KEY = Fernet.generate_key().decode()
 NIGHT = date(2026, 9, 16)
@@ -440,6 +441,57 @@ class TestSending:
 
         assert response.status_code == 422
         assert "mailbox" in response.text.lower()
+
+
+class TestMessageTimes:
+    """The thread emits the instant a message was sent, not a clock reading the server guessed at.
+
+    `sent_at` is stored in UTC, correctly, and `strftime` then printed it as though it were the
+    reader's own local time -- so a pitch sent at 11:53 SAST read 09:53. Wrong here, differently
+    wrong abroad, and plausible enough to be believed. The browser is the only thing that knows
+    the reader's zone, so the server names the moment and the browser formats it.
+    """
+
+    def _sent_thread(self, session, mail_settings):
+        """Send one pitch; hand back the panel's HTML and the `sent_at` that was actually stored."""
+        outreach = a_digest_entry(session)
+        client = a_client(session, settings=mail_settings)
+        send_key = _send_key(client, outreach.id)
+        html = post(
+            client,
+            f"/outreach/{outreach.id}/pitch/send",
+            {"subject": "Kelvin", "body": "Hi Nina", "send_key": send_key},
+        ).text
+        return html, session.scalar(select(EmailMessage.sent_at))
+
+    def test_the_time_is_carried_as_a_machine_readable_instant(self, session, mail_settings):
+        html, sent_at = self._sent_thread(session, mail_settings)
+
+        match = re.search(r'<time datetime="([^"]+)"', html)
+        assert match, "the thread rendered no <time> carrying the instant"
+        # Compared as instants, not as strings: what the attribute has to get right is the moment,
+        # not which offset it happens to wear while naming it.
+        assert datetime.fromisoformat(match.group(1)) == sent_at
+
+    def test_the_scriptless_text_is_a_true_time_labelled_utc(self, session, mail_settings):
+        # If the script never runs -- JavaScript off, a script error, a text-mode browser -- what
+        # is left has to be accurate rather than merely present. An unlabelled wrong time is the
+        # bug being fixed; a labelled right one is merely plain.
+        html, sent_at = self._sent_thread(session, mail_settings)
+
+        match = re.search(r"<time[^>]*>([^<]*)</time>", html)
+        assert match, "the thread rendered no <time> element"
+        shown = match.group(1).strip()
+        assert shown.endswith("UTC")
+        assert shown == f"{sent_at.astimezone(UTC).strftime('%-d %b, %H:%M')} UTC"
+
+    def test_the_utc_label_stays_true_when_the_database_answers_in_another_offset(self):
+        # Postgres returns timestamptz in the connection's own zone, so the value is always the
+        # right instant but not always wearing a UTC offset. Formatting without converting first
+        # would print a local clock reading under a "UTC" label -- the same lie in better clothes.
+        moment = datetime(2026, 9, 17, 11, 53, tzinfo=timezone(timedelta(hours=2)))
+
+        assert utc_clock(moment) == "17 Sep, 09:53"
 
 
 def _send_key(client, outreach_id: int) -> str:
