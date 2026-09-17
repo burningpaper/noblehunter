@@ -28,6 +28,7 @@ from core.models import (
     OutreachStatus,
     RouteType,
 )
+from core.pitch_writer import clean_subject
 
 MAX_SUBJECT_LENGTH = 200
 NO_EMAIL = "This curator has no email address good enough to write to."
@@ -202,13 +203,32 @@ def _refuse_if_ruled_out(outreach: Outreach) -> None:
 
 
 def _clean(subject: str, body: str) -> tuple[str, str]:
-    clean_subject = " ".join(str(subject or "").split())[:MAX_SUBJECT_LENGTH]
-    clean_body = str(body or "").strip()
-    if not clean_subject:
+    """The subject and body as they will actually be sent, or raise.
+
+    The subject is cleaned of typesetting artifacts *here*, at the last thing that touches it
+    before `build_message`, and not only where a draft is written. A draft is stored on the entry
+    and re-rendered into the box, so a subject saved before that guard existed -- or written by
+    any future path that doesn't go through the pitch writer -- would otherwise reach a curator
+    with the artifact intact. Pressing "Draft it" and then "Send" without editing is the normal
+    way this app is used, not an unusual one.
+
+    That means altering a line a person may have typed themselves, which is more intrusive than
+    tidying a model's draft, and it is worth being explicit about why it is still right. The words
+    removed are LaTeX command names, matched in lowercase and as whole words only, so a real title
+    keeps every word of its own; the subject is the single line that decides whether a cold email
+    is opened; and the cleaned text goes straight back into the box the person is looking at,
+    where they can see it and change it. The body is left alone -- see `clean_subject`.
+
+    Order matters. Cleaning runs before the emptiness check, so a subject that is nothing but an
+    artifact fails closed on the existing message rather than sending a blank Subject header.
+    """
+    subject_line = clean_subject(str(subject or ""))[:MAX_SUBJECT_LENGTH]
+    body_text = str(body or "").strip()
+    if not subject_line:
         raise PitchProblem("Give the email a subject.")
-    if not clean_body:
+    if not body_text:
         raise PitchProblem("Write something before saving or sending.")
-    return clean_subject, clean_body
+    return subject_line, body_text
 
 
 def _already_sent(session: Session, send_key: str) -> bool:

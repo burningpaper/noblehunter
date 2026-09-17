@@ -308,6 +308,96 @@ class TestSending:
         assert len(gmail.sent) == 1
 
 
+# The subject a real pitch was sitting in the database with, one keystroke from a real curator.
+# It was drafted before the writer learned to clean its own output, which is exactly why the
+# guard cannot live only where drafts are created.
+STORED_ARTIFACT_SUBJECT = "Human Error cdot for Neoclassical Music Gems"
+
+
+class TestTheSubjectIsCleanedOnTheWayOut:
+    """The last gate before Gmail, not just the moment a draft is written.
+
+    Every assertion here reads the message that actually reached the fake, because that is the
+    thing a curator's mail client renders. A return value agreeing with itself proves nothing.
+    """
+
+    def test_a_draft_stored_before_the_guard_existed_is_cleaned_before_it_is_sent(self, session):
+        outreach, mailbox = a_sendable(session)
+        # Set straight onto the entry rather than through `save_draft`: this is the shape of the
+        # row production is holding, written before any cleaning existed. The panel re-renders
+        # it into the box and posts it straight back, which is what `send` receives.
+        outreach.draft_subject = STORED_ARTIFACT_SUBJECT
+        outreach.draft_body = "Hi Nina"
+        session.flush()
+        gmail = FakeGmail()
+
+        message = send(
+            session,
+            outreach,
+            mailbox,
+            gmail,
+            subject=outreach.draft_subject,
+            body=outreach.draft_body,
+        )
+
+        assert "To: nina@broken-machines.com" in gmail.decoded()
+        assert "Subject: Human Error for Neoclassical Music Gems" in gmail.decoded()
+        assert "cdot" not in gmail.decoded()
+        assert message.subject == "Human Error for Neoclassical Music Gems"
+
+    def test_a_real_title_goes_out_exactly_as_it_was_written(self, session):
+        # Guards the fix rather than the bug: "Bullet" is a LaTeX command name in lowercase and
+        # a track's name in title case. A guard that matched case-insensitively would send this
+        # pitch with the track missing from the subject, which is a worse email than a stray word.
+        outreach, mailbox = a_sendable(session)
+        gmail = FakeGmail()
+
+        message = send(
+            session,
+            outreach,
+            mailbox,
+            gmail,
+            subject="Bullet Train for Broken Machines",
+            body="Hi Nina",
+        )
+
+        assert "Subject: Bullet Train for Broken Machines" in gmail.decoded()
+        assert message.subject == "Bullet Train for Broken Machines"
+
+    def test_a_subject_that_is_nothing_but_an_artifact_sends_nothing(self, session):
+        # Cleaning can empty a subject, and an empty Subject header is worse than a stray word:
+        # it is a cold email with nothing on the line that decides whether it is opened. So the
+        # emptiness check runs after the cleaning, and this fails closed on the existing message.
+        outreach, mailbox = a_sendable(session)
+        gmail = FakeGmail()
+
+        with pytest.raises(PitchProblem, match="Give the email a subject"):
+            send(session, outreach, mailbox, gmail, subject="cdot", body="Hi Nina")
+
+        assert gmail.sent == []
+        assert session.scalar(select(func.count()).select_from(EmailMessage)) == 0
+
+    def test_the_body_is_left_exactly_as_the_person_wrote_it(self, session):
+        # Deliberate asymmetry. The body is long-form prose the musician reads and edits before
+        # anything is sent, so a stray word there is visible and harmless; silently deleting from
+        # someone's writing is the worse failure.
+        outreach, mailbox = a_sendable(session)
+        gmail = FakeGmail()
+        body = "Hi Nina,\n\nIt sits somewhere between a cdot and a comma.\n\nSynman"
+
+        message = send(
+            session,
+            outreach,
+            mailbox,
+            gmail,
+            subject="Kelvin for Broken Machines",
+            body=body,
+        )
+
+        assert "cdot" in gmail.decoded()
+        assert message.body_text == body
+
+
 class TestTheThread:
     def test_it_reads_back_in_the_order_it_happened(self, session):
         outreach, mailbox = a_sendable(session)

@@ -198,13 +198,18 @@ _LATEX_ESCAPE = re.compile(r"\\(?![a-zA-Z])")
 _BARE_ARTIFACT = re.compile(r"\b(?:cdot|bullet|textbar|ndash|mdash|textbullet|quad|hspace)\b")
 
 
-def _clean_subject(subject: str) -> str:
+def clean_subject(subject: str) -> str:
     """The subject with any typesetting artifact taken out and the gap closed up.
 
     The subject only. It is the line that decides whether a cold email gets opened and the one line
     nobody rereads, so a stray "cdot" there is worth removing unasked. The body is not touched: it
     is long-form prose the musician reads and edits before anything is sent, so a stray word there
     is visible and harmless, and quietly deleting from someone's draft is the worse failure.
+
+    Public, and deliberately so: `core.pitches` calls this again at the last gate before Gmail,
+    because a draft written here is stored and re-rendered, so cleaning only at drafting time
+    misses every subject that was saved before this existed. Two copies of the denylist that
+    drifted apart would be worse than the bug, so there is one, and it lives here.
     """
     cleaned = _LATEX_COMMAND.sub(" ", subject)
     cleaned = _LATEX_ESCAPE.sub("", cleaned)
@@ -216,7 +221,7 @@ def _parse(response) -> tuple[str, str]:
     text = next((block.text for block in response.content if block.type == "text"), None)
     try:
         answer = json.loads(text or "")
-        subject = _clean_subject(" ".join(str(answer["subject"]).split()))
+        subject = clean_subject(" ".join(str(answer["subject"]).split()))
         body = str(answer["body"]).strip()
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         logger.warning(
