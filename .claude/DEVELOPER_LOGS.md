@@ -365,3 +365,25 @@ A fourth place was worth checking and turned out not to exist. `web/inbox.py` an
 The tests were written first and each was watched failing for its own reason, which was worth the trouble: three failed on `assert 'auth' == 'config'`, one on a `last_error` that was never recorded, one on a round that reported itself clean while ignoring the only message it had, and one on a panel offering "Try again shortly". The regression that actually cost time — a config error leaving `needs_reconnect` alone while an auth error still sets it — is now stated outright in `tests/test_mail_sync.py`, because that is the assertion whose absence let the whole thing happen.
 
 The suite is 1784 passed, 6 skipped, and lint is clean. Nothing pushed, and migration 0007 still hasn't been applied to Neon.
+
+## 2026-09-17: The LaTeX that nearly went to a curator
+
+A real pitch, one keystroke from a real curator, had this subject line: `Human Error cdot for Neoclassical Music Gems`. It was caught by a person squinting at a phone screenshot, which is not a safety net so much as a piece of luck.
+
+`cdot` is the LaTeX command for a centred dot. Nobody asked for LaTeX. The prompt asked for "a subject line under 80 characters that names the track and the playlist" and then said nothing whatsoever about how to *join* those two things, so the model did what a writer does when handed two nouns and no conjunction: it reached for a separator. It reached for a typographic one, and what came out was the command name with its backslash missing.
+
+The missing backslash was worth pinning down before touching anything, because the obvious suspect is the wrong one. `_parse` uses strict `json.loads`, and strict JSON has no `\c` escape — an unescaped `\cdot` in the model's output is a parse error, which becomes a `PitchWriterError` and a draft that never appears. So the backslash was almost certainly never there. The three cases were checked directly: a literal `\cdot` is rejected outright, an escaped `\\cdot` parses into a string carrying a real backslash, and the bare word sails through untouched. The parsing is behaving correctly and was left alone. Only the third case is what the curator nearly saw.
+
+The fix has two halves, because a prompt instruction is a request and the guard is the guarantee.
+
+The request: the subject sentence in `SYSTEM_PROMPT` now says ordinary words and ordinary punctuation, no LaTeX, no markdown, no typographic control sequences, nothing exotic standing in as a separator. One clause, in the same plain voice as the rest of that prompt, which is written to a writer rather than to a machine.
+
+The guarantee: `_clean_subject`, applied in `_parse` after the existing whitespace collapse. Anything shaped like a backslash command goes; a lone backslash before punctuation loses the backslash and keeps the punctuation, so `\&` reads as `&`; and a short denylist of bare command names — `cdot`, `bullet`, `textbar`, `ndash`, `mdash`, `textbullet`, `quad`, `hspace` — is removed as whole words, with the gap closed up so `Human Error cdot for X` becomes `Human Error for X` and not `Human Error  for X`.
+
+One decision in there is worth writing down, because it is a deliberate departure from how the fix was first specified. The bare words are matched **case-sensitively, lowercase only**. Matching them case-insensitively, as originally asked, cannot survive its own acceptance test: `bullet` case-insensitively eats the first word of `Bullet Train for Broken Machines`, and a pitch for a track called `Quad` arrives with no track in the subject at all. Both were checked against a naive case-insensitive pattern before choosing, and both come out mangled. Lowercase-only splits them cleanly, on a real signal rather than a lucky one: these are LaTeX command names, a model drops them in lowercase, and a title capitalises. The residue is narrow and known — a legitimately lowercase "bullet" or "quad" mid-subject would still be taken — and that is the trade accepted, because a subject that loses the track's name is a worse email than one carrying a stray word.
+
+The body is deliberately not sanitised, and the comment in the code says so. It is long-form prose the musician reads and edits before anything is sent, so a stray word there is visible and harmless. Silently deleting things from someone's draft is the worse failure, and it is the kind that erodes trust in the whole box.
+
+The tests came first and each was watched failing for its own reason: the bare word surviving, the real backslash surviving, and the artifact removal leaving a doubled space. The three remaining tests pass before the fix and always did — the two survival tests and the untouched body — and that is the point of them. They guard the fix rather than the bug, and they were confirmed meaningful by checking them against the naive pattern the guard deliberately isn't.
+
+The suite is 1790 passed, 6 skipped, and lint is clean. Nothing pushed, and migration 0007 still hasn't been applied to Neon.
