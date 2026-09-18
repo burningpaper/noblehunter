@@ -3,8 +3,18 @@
   {% if inbox_notice %}<p class="notice" role="status">{{ inbox_notice }}</p>{% endif %}
   {% if not view.conversations %}
   <div class="card empty-state rise">
+    {# Empty under a filter is a fact about that person -- nothing has been pitched from their
+       artists yet -- and not the same fact as an Inbox nobody has ever used. Saying so in their
+       name, with a way back, is what stops it reading like a fault. #}
+    {% if view.chosen_person_id %}
+    <h2 class="empty-state__title">No conversations for {{ view.chosen_person_label }}</h2>
+    <p class="empty-state__body">
+      Nothing has been pitched from their artists yet. <a href="/inbox">Show everyone</a>.
+    </p>
+    {% else %}
     <h2 class="empty-state__title">No conversations yet</h2>
     <p class="empty-state__body">Send a pitch from tonight's digest and it will appear here.</p>
+    {% endif %}
   </div>
   {% else %}
   <ol class="inbox-list" role="list">

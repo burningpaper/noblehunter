@@ -4,6 +4,10 @@ Admins (everyone in ALLOWED_EMAILS) manage this on the People page. There are no
 emails: adding someone means their Google account is let in the next time they sign in. The
 rules live here, not in the routes, so every way of changing membership obeys them, and
 validation reports every problem at once in words an admin can act on.
+
+The People page is admin-only, so most of this file never asks who is looking. `people_visible_to`
+and `require_person` do: they answer "who may this viewer know exists", for pages like the Inbox
+that offer a person as a filter. Both ask it the same way, on purpose -- see the note on the first.
 """
 
 import re
@@ -13,7 +17,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from core.access import is_storable_id
+from core.access import NotVisible, Viewer, is_storable_id, visible_to
 from core.models import Artist, ArtistMember, Profile, User
 
 EMAIL_PATTERN = re.compile(r"^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
@@ -50,6 +54,68 @@ def normalize_email(value: str) -> str | None:
     if len(email) > MAX_EMAIL_LENGTH or not EMAIL_PATTERN.match(email):
         return None
     return email
+
+
+def people_visible_to(session: Session, viewer: Viewer) -> tuple[tuple[int, str], ...]:
+    """Everyone who shares at least one artist with the viewer, as (id, label), for a filter row.
+
+    An admin sees everyone on any artist; a member sees only the people on their own artists.
+    This is the one place that decides who a viewer may know exists, and `require_person` asks
+    the same question of a single id rather than growing a second rule of its own. Two rules
+    would drift, and what drifts here is a list of email addresses: showing a member somebody
+    from an unrelated artist leaks a real address, which costs more than any filter is worth.
+    """
+    rows = session.execute(
+        select(User.id, User.email, User.name)
+        .join(ArtistMember, ArtistMember.user_id == User.id)
+        .where(visible_to(viewer, ArtistMember.artist_id))
+        .distinct()
+    )
+    people = [(user_id, person_label(email, name)) for user_id, email, name in rows]
+    return tuple(sorted(people, key=lambda person: person[1].casefold()))
+
+
+def person_label(email: str, name: str | None) -> str:
+    """What to call someone: their Google name if we have one, otherwise their email address.
+
+    `users.name` is only filled in the first time someone actually signs in, so anyone an admin
+    added who hasn't been back yet has nothing else to be called -- and the address is what the
+    admin typed, so it is the name they will recognise anyway.
+    """
+    return (name or "").strip() or email
+
+
+def require_person(session: Session, viewer: Viewer, user_id: int) -> User:
+    """The person, if the viewer shares an artist with them. Anyone else is simply not found.
+
+    Not an empty list: answering "they have no conversations" for a real id the viewer can't see
+    would confirm that the id exists, which is the fact being kept from them.
+    """
+    if not is_storable_id(user_id):
+        raise NotVisible(f"Person {user_id} not found")
+    user = session.get(User, user_id)
+    if user is None or not _shares_a_visible_artist(session, viewer, user_id):
+        raise NotVisible(f"Person {user_id} not found")
+    return user
+
+
+def _shares_a_visible_artist(session: Session, viewer: Viewer, user_id: int) -> bool:
+    membership = session.scalar(
+        select(ArtistMember.user_id)
+        .where(ArtistMember.user_id == user_id, visible_to(viewer, ArtistMember.artist_id))
+        .limit(1)
+    )
+    return membership is not None
+
+
+def artist_ids_for_person(session: Session, user_id: int) -> frozenset[int]:
+    """Every artist this person is on -- all of them, whoever is asking.
+
+    Deliberately not scoped to a viewer: callers use it to narrow rows they have *already*
+    scoped with `visible_to`, where an extra artist id can only ever match fewer rows, never
+    more. Anything selecting rows with this alone would be a leak.
+    """
+    return frozenset(session.scalars(select(ArtistMember.artist_id).where(ArtistMember.user_id == user_id)))
 
 
 def list_artists(session: Session) -> list[ArtistSummary]:

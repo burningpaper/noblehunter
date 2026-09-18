@@ -8,6 +8,11 @@ direction of the last message, exactly as on the digest entry: derived, never a 
 so a reply arriving overnight needs nothing to have been updated in the right order.
 
 Every query is scoped with `visible_to`, so a member's Inbox can only ever hold their own.
+
+The filter here is a *person*, not a profile as on the digest. The digest is about leads, which
+belong to a profile; a conversation belongs to an artist's mailbox, and the question this page
+answers is "who is waiting on me" -- so the person is the unit, and Jarred gets every reply on
+every artist he works on in one place.
 """
 
 from dataclasses import dataclass
@@ -19,6 +24,7 @@ from sqlalchemy.orm import Session
 from core.access import Viewer, visible_to
 from core.digest_view import EntryMail
 from core.models import Artist, Curator, EmailMessage, MailDirection, Outreach, Playlist, Profile
+from core.people import artist_ids_for_person, people_visible_to
 
 SNIPPET_LENGTH = 160
 
@@ -26,7 +32,7 @@ SNIPPET_LENGTH = 160
 @dataclass(frozen=True)
 class ConversationView:
     outreach_id: int
-    profile_id: int
+    artist_id: int
     artist_name: str
     profile_name: str
     curator_name: str
@@ -43,10 +49,22 @@ class ConversationView:
 @dataclass(frozen=True)
 class InboxView:
     conversations: tuple[ConversationView, ...]
-    profiles: tuple[tuple[int, str], ...] = ()  # (id, name) of every profile with a conversation
-    chosen_profile_id: int | None = None
+    people: tuple[tuple[int, str], ...] = ()  # (id, label) of everyone the viewer may filter by
+    chosen_person_id: int | None = None
     show_artists: bool = False
 
+    @property
+    def chosen_person_label(self) -> str:
+        """What to call the person being filtered to, so an empty list can say whose it is."""
+        return dict(self.people).get(self.chosen_person_id, "")
+
+    @property
+    def filter_query(self) -> str:
+        """The filter as a query string, so "Check now" comes back to the list you were reading."""
+        return f"?person={self.chosen_person_id}" if self.chosen_person_id else ""
+
+    # The counts read from `conversations`, which is already filtered, so a narrowed list always
+    # gets narrowed counts: the heading can't end up contradicting the list underneath it.
     @property
     def total(self) -> int:
         return len(self.conversations)
@@ -60,18 +78,23 @@ class InboxView:
         return sum(conversation.unread for conversation in self.conversations)
 
 
-def inbox_view(
-    session: Session, viewer: Viewer, *, now: datetime, profile_id: int | None = None
-) -> InboxView:
+def inbox_view(session: Session, viewer: Viewer, *, now: datetime, person_id: int | None = None) -> InboxView:
     """Every conversation this viewer can see, waiting-on-you first, then most recent.
 
-    `profile_id` narrows the list to one profile. The caller checks it with `require_profile`
-    first, so another artist's id is a 404 long before it reaches this query.
+    `person_id` narrows the list to one person. The caller checks it with `require_person`
+    first, so someone the viewer can't see is a 404 long before it reaches this query.
     """
     last = _last_message_per_entry(session, viewer)
     counts = _counts_per_entry(session, list(last))
     rows = session.execute(
-        select(Outreach.id, Profile.id, Artist.name, Profile.name, Curator.display_name, Playlist.name)
+        select(
+            Outreach.id,
+            Profile.artist_id,
+            Artist.name,
+            Profile.name,
+            Curator.display_name,
+            Playlist.name,
+        )
         .join(Profile, Profile.id == Outreach.profile_id)
         .join(Artist, Artist.id == Profile.artist_id)
         .join(Curator, Curator.id == Outreach.curator_id)
@@ -81,7 +104,7 @@ def inbox_view(
     everything = [
         ConversationView(
             outreach_id=outreach_id,
-            profile_id=owning_profile_id,
+            artist_id=artist_id,
             artist_name=artist_name,
             profile_name=profile_name,
             curator_name=curator_name,
@@ -96,16 +119,22 @@ def inbox_view(
             received=counts[outreach_id][1],
             unread=counts[outreach_id][2],
         )
-        for outreach_id, owning_profile_id, artist_name, profile_name, curator_name, playlist_name in rows
+        for outreach_id, artist_id, artist_name, profile_name, curator_name, playlist_name in rows
     ]
-    # The filter chips list every profile that has a conversation, even the one being filtered out.
-    profiles = sorted({(c.profile_id, c.profile_name) for c in everything}, key=lambda p: p[1].casefold())
-    chosen = [c for c in everything if profile_id is None or c.profile_id == profile_id]
+    # Mail lives on an artist's mailbox, so "this person's conversations" means every artist they
+    # are a member of. Two people on one artist therefore see an identical list -- that follows
+    # from mail belonging to a mailbox rather than to a person, and isn't worth designing around.
+    theirs = artist_ids_for_person(session, person_id) if person_id is not None else None
+    # `everything` is already scoped with visible_to, so narrowing it to their artists can only
+    # ever remove rows: a person who also works on an artist the viewer can't see shows none of it.
+    chosen = [c for c in everything if theirs is None or c.artist_id in theirs]
     chosen.sort(key=lambda c: (not c.waiting_on_you, -c.last_at.timestamp(), c.outreach_id))
     return InboxView(
         conversations=tuple(chosen),
-        profiles=tuple(profiles),
-        chosen_profile_id=profile_id,
+        # Everyone the viewer may filter by, not just those with conversations: a person with a
+        # quiet mailbox is still a real choice, and the empty state says so in their name.
+        people=people_visible_to(session, viewer),
+        chosen_person_id=person_id,
         show_artists=viewer.is_admin or len(viewer.artist_ids) > 1,
     )
 

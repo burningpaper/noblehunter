@@ -16,10 +16,11 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.access import Viewer, require_profile, visible_to
+from core.access import Viewer, visible_to
 from core.inbox_view import inbox_view
 from core.mail_sync import sync_mailbox
 from core.models import MailAccount
+from core.people import require_person
 from web.access import CurrentViewer
 from web.db import get_db
 from web.forms import form_id
@@ -36,21 +37,22 @@ NO_MAILBOX = "There's no mailbox to check yet. Connect one on a profile first."
 
 
 @router.get("")
-def page(request: Request, db: DbSession, viewer: CurrentViewer, profile: str = "") -> Response:
-    chosen = form_id(profile)
-    if chosen:
-        require_profile(db, viewer, chosen)  # another artist's id is not found, as everywhere else
-    context = _context(db, viewer, profile_id=chosen or None)
+def page(request: Request, db: DbSession, viewer: CurrentViewer, person: str = "") -> Response:
+    context = _context(db, viewer, person_id=_chosen_person(db, viewer, person))
     return templates.TemplateResponse(request, "inbox/page.html", context)
 
 
 @router.post("/check")
-def check_now(request: Request, db: DbSession, viewer: CurrentViewer) -> Response:
+def check_now(request: Request, db: DbSession, viewer: CurrentViewer, person: str = "") -> Response:
     """Read the viewer's own mailboxes now, then re-render the list with whatever arrived."""
+    # Read the filter first: this swaps the list out, and coming back unfiltered would move the
+    # page out from under whoever clicked it. Every mailbox they can see is still checked, filter
+    # or no filter -- the filter decides what's shown, not what gets read.
+    chosen = _chosen_person(db, viewer, person)
     mailboxes = _their_mailboxes(db, viewer)
     cipher = cipher_or_none(request)
     if not mailboxes or cipher is None:
-        return _list(request, db, viewer, NO_MAILBOX)
+        return _list(request, db, viewer, NO_MAILBOX, chosen)
 
     stored, problems = 0, 0
     now = datetime.now(UTC)
@@ -70,16 +72,26 @@ def check_now(request: Request, db: DbSession, viewer: CurrentViewer) -> Respons
     notice = f"{stored} new {'reply' if stored == 1 else 'replies'}." if stored else "No new replies."
     if problems:
         notice += " Some mailboxes couldn't be read; the runner will try again."
-    return _list(request, db, viewer, notice)
+    return _list(request, db, viewer, notice, chosen)
 
 
-def _list(request: Request, db: Session, viewer: Viewer, notice: str) -> Response:
+def _chosen_person(db: Session, viewer: Viewer, person: str) -> int | None:
+    """The person being filtered to, or None for everyone. Someone they can't see is not found."""
+    chosen = form_id(person)
+    if not chosen:
+        return None
+    require_person(db, viewer, chosen)  # someone else's id is not found, as everywhere else
+    return chosen
+
+
+def _list(request: Request, db: Session, viewer: Viewer, notice: str, person_id: int | None) -> Response:
     """Just the conversations, for the fragment "Check now" swaps in."""
-    return templates.TemplateResponse(request, "inbox/_list.html", _context(db, viewer, notice=notice))
+    context = _context(db, viewer, notice=notice, person_id=person_id)
+    return templates.TemplateResponse(request, "inbox/_list.html", context)
 
 
-def _context(db: Session, viewer: Viewer, notice: str | None = None, profile_id: int | None = None) -> dict:
-    view = inbox_view(db, viewer, now=datetime.now(UTC), profile_id=profile_id)
+def _context(db: Session, viewer: Viewer, notice: str | None = None, person_id: int | None = None) -> dict:
+    view = inbox_view(db, viewer, now=datetime.now(UTC), person_id=person_id)
     return {"view": view, "inbox_notice": notice}
 
 

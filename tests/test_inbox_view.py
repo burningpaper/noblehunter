@@ -10,9 +10,11 @@ from tests.factories import (
     make_artist,
     make_curator,
     make_mailbox,
+    make_member,
     make_outreach,
     make_playlist,
     make_profile,
+    make_user,
     member_viewer,
 )
 
@@ -137,20 +139,83 @@ def test_opening_the_thread_clears_the_unread_count(session):
     assert inbox_view(session, admin_viewer(), now=NOW).unread == 0
 
 
-def test_the_filter_narrows_to_one_profile(session):
-    artist = make_artist(session)
-    mine = a_conversation(
-        session, artist=artist, curator_name="Mine", messages=[(MailDirection.OUT, days_ago(1), "Hi")]
+def test_the_filter_narrows_to_the_conversations_on_that_persons_artists(session):
+    mine, theirs = make_artist(session), make_artist(session)
+    me = make_member(session, mine)
+    make_member(session, theirs, me)  # I work on both
+    them = make_member(session, theirs)  # they work on only the second
+    a_conversation(
+        session, artist=mine, curator_name="Mine", messages=[(MailDirection.OUT, days_ago(1), "Hi")]
     )
     a_conversation(
-        session, artist=artist, curator_name="Other", messages=[(MailDirection.OUT, days_ago(1), "Hi")]
+        session, artist=theirs, curator_name="Theirs", messages=[(MailDirection.OUT, days_ago(1), "Hi")]
     )
 
-    view = inbox_view(session, admin_viewer(), now=NOW, profile_id=mine.profile_id)
+    view = inbox_view(session, member_viewer(mine, theirs), now=NOW, person_id=them.id)
+
+    assert [c.curator_name for c in view.conversations] == ["Theirs"]
+    assert len(view.people) == 2  # the chips still offer both
+    assert view.chosen_person_id == them.id
+
+
+def test_the_people_offered_are_only_those_who_share_an_artist(session):
+    mine, theirs = make_artist(session), make_artist(session)
+    make_member(session, mine, make_user(session, "colleague@example.com"))
+    make_member(session, theirs, make_user(session, "stranger@example.com"))
+
+    view = inbox_view(session, member_viewer(mine), now=NOW)
+
+    assert [label for _, label in view.people] == ["colleague@example.com"]
+
+
+def test_an_admin_can_filter_by_anyone(session):
+    first, second = make_artist(session), make_artist(session)
+    make_member(session, first, make_user(session, "one@example.com"))
+    make_member(session, second, make_user(session, "two@example.com"))
+
+    view = inbox_view(session, admin_viewer(), now=NOW)
+
+    assert [label for _, label in view.people] == ["one@example.com", "two@example.com"]
+
+
+def test_a_person_is_named_by_their_google_name_and_falls_back_to_their_email(session):
+    artist = make_artist(session)
+    named = make_member(session, artist, make_user(session, "kim@example.com"))
+    named.name = "Kim Deal"
+    make_member(session, artist, make_user(session, "nameless@example.com"))
+    session.flush()
+
+    labels = [label for _, label in inbox_view(session, member_viewer(artist), now=NOW).people]
+
+    assert labels == ["Kim Deal", "nameless@example.com"]
+
+
+def test_the_counts_follow_the_filter(session):
+    mine, theirs = make_artist(session), make_artist(session)
+    make_member(session, theirs, make_member(session, mine))
+    them = make_member(session, theirs)
+    a_conversation(session, artist=mine, messages=[(MailDirection.IN, days_ago(1), "Send it")])
+    a_conversation(session, artist=theirs, messages=[(MailDirection.OUT, days_ago(1), "Hi")])
+
+    view = inbox_view(session, member_viewer(mine, theirs), now=NOW, person_id=them.id)
+
+    assert (view.total, view.waiting, view.unread) == (1, 0, 0)  # unfiltered it would be 2, 1, 1
+
+
+def test_filtering_to_a_person_cant_widen_past_what_the_viewer_can_see(session):
+    mine, hidden = make_artist(session), make_artist(session)
+    both = make_member(session, mine)
+    make_member(session, hidden, both)  # they also work on an artist the viewer isn't on
+    a_conversation(
+        session, artist=mine, curator_name="Mine", messages=[(MailDirection.OUT, days_ago(1), "Hi")]
+    )
+    a_conversation(
+        session, artist=hidden, curator_name="Hidden", messages=[(MailDirection.OUT, days_ago(1), "Hi")]
+    )
+
+    view = inbox_view(session, member_viewer(mine), now=NOW, person_id=both.id)
 
     assert [c.curator_name for c in view.conversations] == ["Mine"]
-    assert len(view.profiles) == 2  # the chips still offer both
-    assert view.chosen_profile_id == mine.profile_id
 
 
 def test_a_long_reply_is_shown_as_a_snippet(session):
