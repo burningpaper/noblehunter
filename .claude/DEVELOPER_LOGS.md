@@ -508,4 +508,6 @@ Eight tests, written first and watched failing, each for its own reason: `TypeEr
 
 One thing checked rather than assumed: whether a fourth uncapped spender lurks in the nightly run. It doesn't. `pipeline/fit_judge.py` and `pipeline/research_agent.py` are the other two, both capped, and `pipeline/cli.py` wires exactly those three. `core/pitch_writer.py` and `core/suggestions.py` do spend on Claude, but they live in the web app, run only when a person clicks, and are uncapped by design for now.
 
-The suite is 1829 passed, 6 skipped, and lint is clean. Nothing pushed, and migration 0007 still hasn't been applied to Neon.
+The suite is 1829 passed, 6 skipped, and lint is clean.
+
+**A correction, and a lesson about closing lines.** Every entry from 2026-09-16 onwards ends with some version of "nothing pushed, and migration 0007 still hasn't been applied to Neon". That was true when the first one wrote it, and each builder since copied its predecessor's closing sentence without re-checking it — so one accurate fact propagated itself eight times into a falsehood. In reality Jarred migrated Neon and re-ran `db grant` on 2026-09-17, the branch has been pushed to `main` six times since, and the app has been live on Vercel throughout. The earlier entries are left as they were, because they were true on the day; this note is where the record turns. The habit worth keeping: a closing status line is a claim about the world, not boilerplate to carry forward.
