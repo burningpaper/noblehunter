@@ -312,6 +312,64 @@ class TestDigestDayVisibility:
         )
 
 
+class TestProfileFilterAccess:
+    """The ?profile= filter is an access surface: another artist's id must be 404, never empty."""
+
+    def a_member_and_another_artists_entry(self, session):
+        mine, theirs = make_artist(session, "Mine"), make_artist(session, "Theirs")
+        mine_entry = entry(session, mine, NIGHT, "Mine tonight")
+        theirs_entry = entry(session, theirs, NIGHT, "Theirs tonight")
+        make_member(session, mine, make_user(session, "nik@example.com"))
+        return member_client(session, "nik@example.com"), mine_entry, theirs_entry
+
+    def test_another_artists_profile_filter_is_not_found(self, session):
+        client, _mine, theirs = self.a_member_and_another_artists_entry(session)
+
+        response = client.get(f"/digest?profile={theirs.profile_id}", headers={"accept": "text/html"})
+
+        # 404, not an empty page: an empty page would confirm the id exists.
+        assert response.status_code == 404
+        assert "Theirs tonight" not in response.text
+
+    def test_a_dated_digest_refuses_another_artists_profile_too(self, session):
+        client, _mine, theirs = self.a_member_and_another_artists_entry(session)
+
+        response = client.get(
+            f"/digest/{NIGHT.isoformat()}?profile={theirs.profile_id}", headers={"accept": "text/html"}
+        )
+
+        assert response.status_code == 404
+        assert "Theirs tonight" not in response.text
+
+    def test_a_member_filtering_to_their_own_profile_sees_their_entries(self, session):
+        client, mine, _theirs = self.a_member_and_another_artists_entry(session)
+
+        response = client.get(f"/digest?profile={mine.profile_id}", headers={"accept": "text/html"})
+
+        assert response.status_code == 200
+        assert "Mine tonight" in response.text
+
+    def test_an_id_too_big_to_exist_is_ignored_like_no_filter(self, session):
+        # `form_id` turns an id Postgres couldn't hold into 0, which names nothing, so there is
+        # nothing to refuse -- and no crash from psycopg either. That is the same contract the
+        # Inbox's filter branches on, and the two pages shouldn't disagree about it. What matters
+        # for access is the second assertion: the unfiltered page is still only ever their own.
+        client, _mine, _theirs = self.a_member_and_another_artists_entry(session)
+
+        response = client.get(f"/digest?profile={MAX_POSTGRES_INT + 1}", headers={"accept": "text/html"})
+
+        assert response.status_code == 200
+        assert "Theirs tonight" not in response.text
+
+    def test_a_filter_that_isnt_a_number_is_ignored_like_no_filter(self, session):
+        client, _mine, _theirs = self.a_member_and_another_artists_entry(session)
+
+        response = client.get("/digest?profile=", headers={"accept": "text/html"})
+
+        assert response.status_code == 200
+        assert "Mine tonight" in response.text
+
+
 def page_without_its_date(html: str, day: date) -> str:
     """The page with its CSRF token and every rendering of `day` blanked, so two nights compare equal."""
     html = re.sub(r'"X-CSRF-Token":\s*"[^"]+"', '"X-CSRF-Token": ""', html)

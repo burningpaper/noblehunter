@@ -1647,7 +1647,10 @@ code {
   list-style: none;
 }
 
-.inbox-filter {
+/* Shared with the digest's filter row: the same control, on the two pages that group by profile.
+   One rule with two names, rather than two copies of it that drift apart. */
+.inbox-filter,
+.digest-filter {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);

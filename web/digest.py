@@ -16,11 +16,12 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from core.access import Viewer, require_outreach
+from core.access import Viewer, require_outreach, require_profile
 from core.digest_view import digest_view, entry_view
 from core.exclusion import record_verdict
 from web.access import CurrentViewer
 from web.db import get_db
+from web.forms import form_id
 from web.templating import templates
 
 router = APIRouter()
@@ -33,17 +34,19 @@ UNKNOWN_VERDICT = "Choose pitched, skip, bad fit or dead."
 
 
 @router.get("/digest")
-def latest_digest(request: Request, db: DbSession, viewer: CurrentViewer) -> Response:
-    return _page(request, db, None, viewer)
+def latest_digest(request: Request, db: DbSession, viewer: CurrentViewer, profile: str = "") -> Response:
+    return _page(request, db, None, viewer, profile)
 
 
 @router.get("/digest/{day}")
-def digest_for_day(request: Request, day: str, db: DbSession, viewer: CurrentViewer) -> Response:
+def digest_for_day(
+    request: Request, day: str, db: DbSession, viewer: CurrentViewer, profile: str = ""
+) -> Response:
     try:
         chosen = date.fromisoformat(day)
     except ValueError:
         raise HTTPException(status_code=404) from None
-    return _page(request, db, chosen, viewer)
+    return _page(request, db, chosen, viewer, profile)
 
 
 @router.post("/outreach/{outreach_id}/verdict")
@@ -62,8 +65,17 @@ def save_verdict(
     return _entry(request, db, outreach_id, now.date())
 
 
-def _page(request: Request, db: Session, chosen: date | None, viewer: Viewer) -> Response:
-    view = digest_view(db, chosen, today=datetime.now(UTC).date(), viewer=viewer)
+def _page(request: Request, db: Session, chosen: date | None, viewer: Viewer, profile: str) -> Response:
+    chosen_profile = form_id(profile)
+    if chosen_profile:
+        require_profile(db, viewer, chosen_profile)  # another artist's id is not found, as everywhere else
+    view = digest_view(
+        db,
+        chosen,
+        today=datetime.now(UTC).date(),
+        viewer=viewer,
+        profile_id=chosen_profile or None,
+    )
     return templates.TemplateResponse(request, "digest/page.html", {"view": view, **_verdict_context()})
 
 

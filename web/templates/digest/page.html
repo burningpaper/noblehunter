@@ -14,13 +14,27 @@
     so nobody comes round again too soon.
   </p>
   {% endif %}
+
+  {# Only worth showing when there's a choice to make, exactly as on the Inbox. Each chip keeps
+     the night you're looking at, so filtering doesn't also move you in time. #}
+  {% if view.filter_profiles | length > 1 %}
+  <nav class="digest-filter" aria-label="Filter by profile">
+    <a class="button button--small {{ 'button--primary' if not view.chosen_profile_id else 'button--ghost' }}"
+       href="{{ view.path }}"{% if not view.chosen_profile_id %} aria-current="page"{% endif %}>All</a>
+    {% for profile_id, profile_name in view.filter_profiles %}
+    <a class="button button--small {{ 'button--primary' if view.chosen_profile_id == profile_id else 'button--ghost' }}"
+       href="{{ view.path }}?profile={{ profile_id }}"{% if view.chosen_profile_id == profile_id %} aria-current="page"{% endif %}>{{ profile_name }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
   {% if view.earlier_date or view.later_date %}
   <nav class="digest-nav" aria-label="Other nights">
     {% if view.earlier_date %}
-    <a class="button button--ghost button--small" href="/digest/{{ view.earlier_date.isoformat() }}">← {{ view.earlier_date.strftime("%-d %b") }}</a>
+    <a class="button button--ghost button--small" href="/digest/{{ view.earlier_date.isoformat() }}{{ view.filter_query }}">← {{ view.earlier_date.strftime("%-d %b") }}</a>
     {% endif %}
     {% if view.later_date %}
-    <a class="button button--ghost button--small" href="/digest/{{ view.later_date.isoformat() }}">{{ view.later_date.strftime("%-d %b") }} →</a>
+    <a class="button button--ghost button--small" href="/digest/{{ view.later_date.isoformat() }}{{ view.filter_query }}">{{ view.later_date.strftime("%-d %b") }} →</a>
     {% endif %}
   </nav>
   {% endif %}
@@ -44,7 +58,16 @@
   </p>
   {% elif not view.total %}
   <div class="card empty-state rise">
+    {# An empty page under a filter isn't the same fact as an empty night, and saying so is what
+       stops it reading like a bug. The way out is a link, not an instruction. #}
+    {% if view.chosen_profile_id %}
+    <h2 class="empty-state__title">Nothing for this profile on this night</h2>
+    <p class="empty-state__body">
+      Another profile may have run. <a href="{{ view.path }}">Show every profile</a> for this night.
+    </p>
+    {% else %}
     <h2 class="empty-state__title">Nothing on this night</h2>
+    {% endif %}
   </div>
   {% endif %}
 

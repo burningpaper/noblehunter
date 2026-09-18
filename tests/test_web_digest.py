@@ -13,6 +13,7 @@ from core.models import (
     Outreach,
     PlaylistProfileFit,
     PlaylistStatus,
+    Profile,
 )
 from tests.factories import (
     make_contact,
@@ -53,12 +54,16 @@ def htmx_post(client: TestClient, path: str, data: dict):
 def an_entry(
     session,
     *,
+    profile: Profile | None = None,
     digest_date: date = DIGEST_DATE,
     brief: str = "Nik curates warm IDM.",
     email: str = "nik@valleyview.example",
 ) -> Outreach:
-    """A digested playlist with a reachable curator. Emails must differ: one address, one curator."""
-    profile = make_profile(session)
+    """A digested playlist with a reachable curator. Emails must differ: one address, one curator.
+
+    Pass `profile` to put a second entry on the same profile; otherwise each call makes its own.
+    """
+    profile = profile or make_profile(session)
     curator = make_curator(session, display_name="Nik Davies")
     make_contact(session, curator, route_type="email", value=email)
     playlist = make_playlist(
@@ -183,6 +188,66 @@ def test_an_earlier_digest_by_date_links_to_the_later_one(client, session):
 @pytest.mark.parametrize("path", ["/digest/not-a-date", "/digest/2026-02-30"])
 def test_a_bad_date_is_not_found(client, path):
     assert page(client, path).status_code == 404
+
+
+class TestProfileFilter:
+    """Two artists share an admin's page, so it can be narrowed to one profile at a time."""
+
+    def test_the_filter_narrows_the_page_to_one_profile(self, client, session):
+        mine = an_entry(session, brief="Synman tonight", email="synman@valleyview.example")
+        an_entry(session, brief="NEWIRE tonight", email="newire@valleyview.example")
+
+        html = page(client, f"/digest?profile={mine.profile_id}").text
+
+        assert "Synman tonight" in html
+        assert "NEWIRE tonight" not in html
+
+    def test_no_filter_still_shows_everything(self, client, session):
+        an_entry(session, brief="Synman tonight", email="synman@valleyview.example")
+        an_entry(session, brief="NEWIRE tonight", email="newire@valleyview.example")
+
+        html = page(client).text
+
+        assert "Synman tonight" in html
+        assert "NEWIRE tonight" in html
+
+    def test_the_filter_row_is_hidden_when_there_is_only_one_profile(self, client, session):
+        an_entry(session)
+
+        assert "Filter by profile" not in page(client).text
+
+    def test_the_filter_row_offers_all_and_marks_the_chosen_profile(self, client, session):
+        mine = an_entry(session, email="synman@valleyview.example")
+        other = an_entry(session, email="newire@valleyview.example")
+        night = DIGEST_DATE.isoformat()
+
+        html = page(client, f"/digest?profile={mine.profile_id}").text
+
+        assert 'aria-label="Filter by profile"' in html
+        assert f'href="/digest/{night}"' in html  # All
+        assert f'href="/digest/{night}?profile={other.profile_id}"' in html
+        assert f'href="/digest/{night}?profile={mine.profile_id}" aria-current="page"' in html
+
+    def test_the_date_links_keep_the_filter(self, client, session):
+        mine = an_entry(session, digest_date=date(2026, 9, 14), email="older@valleyview.example")
+        an_entry(session, profile=mine.profile, email="newer@valleyview.example")
+        an_entry(session, email="other@valleyview.example")  # a second profile, so a filter row renders
+
+        html = page(client, f"/digest/2026-09-14?profile={mine.profile_id}").text
+
+        # Stepping to the next night must not quietly clear the filter.
+        assert f'href="/digest/{DIGEST_DATE.isoformat()}?profile={mine.profile_id}"' in html
+
+    def test_a_night_the_chosen_profile_missed_explains_itself(self, client, session):
+        mine = an_entry(session, email="synman@valleyview.example")
+        an_entry(session, digest_date=date(2026, 9, 14), email="newire@valleyview.example")
+
+        html = page(client, f"/digest/2026-09-14?profile={mine.profile_id}").text
+
+        # "Nothing on this night" reads like a bug when the filter is what emptied the page.
+        assert "Nothing for this profile" in html
+        assert "Nothing on this night" not in html
+        assert ">Show every profile</a>" in html
 
 
 class TestVerdicts:

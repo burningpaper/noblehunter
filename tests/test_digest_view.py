@@ -12,11 +12,13 @@ from core.digest_view import digest_view
 from core.models import PlaylistProfileFit, PlaylistStatus, Run, RunStageCount
 from tests.factories import (
     admin_viewer,
+    make_artist,
     make_contact,
     make_curator,
     make_outreach,
     make_playlist,
     make_profile,
+    member_viewer,
 )
 
 TODAY = date(2026, 9, 15)
@@ -206,3 +208,98 @@ class TestDigestView:
         )
 
         assert later.days_since_last_add == 7
+
+
+class TestProfileFilter:
+    """Narrowing a mixed digest to one profile, the way the Inbox's filter does."""
+
+    def test_it_shows_only_the_chosen_profiles_entries(self, session):
+        synman = make_profile(session, "Synman")
+        newire = make_profile(session, "NEWIRE")
+        mine = entry(session, synman)
+        entry(session, newire)
+
+        view = digest_view(
+            session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY, profile_id=synman.id
+        )
+
+        assert [(g.profile_name, [e.outreach_id for e in g.entries]) for g in view.profiles] == [
+            ("Synman", [mine.id])
+        ]
+        assert view.chosen_profile_id == synman.id
+
+    def test_without_a_filter_every_visible_profile_is_still_shown(self, session):
+        synman = make_profile(session, "Synman")
+        newire = make_profile(session, "NEWIRE")
+        entry(session, synman)
+        entry(session, newire)
+
+        view = digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY)
+
+        assert {group.profile_name for group in view.profiles} == {"Synman", "NEWIRE"}
+        assert view.chosen_profile_id is None
+
+    def test_the_filter_offers_every_profile_with_entries_including_the_filtered_out_one(self, session):
+        synman = make_profile(session, "Synman")
+        newire = make_profile(session, "NEWIRE")
+        entry(session, synman)
+        entry(session, newire, digest_date=YESTERDAY)  # another night: still selectable
+
+        view = digest_view(
+            session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY, profile_id=synman.id
+        )
+
+        assert view.filter_profiles == ((newire.id, "NEWIRE"), (synman.id, "Synman"))
+
+    def test_a_member_is_never_offered_another_artists_profile(self, session):
+        mine = make_artist(session, "Mine")
+        theirs = make_artist(session, "Theirs")
+        entry(session, make_profile(session, "Synman", artist=mine))
+        entry(session, make_profile(session, "Theirs Profile", artist=theirs))
+
+        view = digest_view(session, viewer=member_viewer(mine), digest_date=TODAY, today=TODAY)
+
+        assert [name for _id, name in view.filter_profiles] == ["Synman"]
+
+    def test_the_dates_offered_are_the_chosen_profiles_own(self, session):
+        synman = make_profile(session, "Synman")
+        newire = make_profile(session, "NEWIRE")
+        entry(session, synman, digest_date=TODAY)
+        entry(session, newire, digest_date=YESTERDAY)
+
+        filtered = digest_view(
+            session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY, profile_id=synman.id
+        )
+        unfiltered = digest_view(session, viewer=admin_viewer(), digest_date=TODAY, today=TODAY)
+
+        # Stepping back to a night only NEWIRE ran would land on an empty page, so it isn't offered.
+        assert filtered.earlier_date is None
+        assert unfiltered.earlier_date == YESTERDAY
+
+    def test_the_latest_under_a_filter_is_that_profiles_own_latest_night(self, session):
+        synman = make_profile(session, "Synman")
+        newire = make_profile(session, "NEWIRE")
+        entry(session, synman, digest_date=YESTERDAY)
+        entry(session, newire, digest_date=TODAY)
+
+        view = digest_view(
+            session, viewer=admin_viewer(), digest_date=None, today=TODAY, profile_id=synman.id
+        )
+
+        assert view.digest_date == YESTERDAY
+        assert view.total == 1
+
+    def test_a_night_the_chosen_profile_missed_is_empty_but_keeps_the_filter(self, session):
+        synman = make_profile(session, "Synman")
+        newire = make_profile(session, "NEWIRE")
+        entry(session, synman, digest_date=TODAY)
+        entry(session, newire, digest_date=YESTERDAY)
+
+        view = digest_view(
+            session, viewer=admin_viewer(), digest_date=YESTERDAY, today=TODAY, profile_id=synman.id
+        )
+
+        assert view.profiles == ()
+        assert view.total == 0
+        assert view.chosen_profile_id == synman.id
+        assert len(view.filter_profiles) == 2  # still a way back to everything

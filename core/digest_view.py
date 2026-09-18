@@ -20,7 +20,7 @@ the latest run that started within that date (with a margin for the Mac's time z
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select, true
 from sqlalchemy.orm import Session
 
 from core.access import Viewer, visible_to
@@ -118,6 +118,9 @@ class DigestView:
     earlier_date: date | None
     later_date: date | None
     show_artists: bool = False
+    # (id, name) of every profile that could be filtered to, and the one that was.
+    filter_profiles: tuple[tuple[int, str], ...] = ()
+    chosen_profile_id: int | None = None
 
     @property
     def total(self) -> int:
@@ -128,6 +131,21 @@ class DigestView:
         """Fewer than 10 entries, which the page says plainly (spec §3.5)."""
         return 0 < self.total < SHORT_DIGEST
 
+    @property
+    def path(self) -> str:
+        """This page's own path: the dated one, or /digest when it's showing the latest night."""
+        return f"/digest/{self.digest_date.isoformat()}" if self.digest_date else "/digest"
+
+    @property
+    def filter_query(self) -> str:
+        """The filter as a query string, for every link that stays on the digest.
+
+        Without it, stepping back a night would quietly clear the filter: the reader narrows to
+        one profile, clicks to yesterday, and everything they filtered out is back with no
+        explanation. A link that leaves this page carries the filter or it loses their place.
+        """
+        return f"?profile={self.chosen_profile_id}" if self.chosen_profile_id else ""
+
 
 def digest_view(
     session: Session,
@@ -136,7 +154,16 @@ def digest_view(
     today: date,
     viewer: Viewer,
     now: datetime | None = None,
+    profile_id: int | None = None,
 ) -> DigestView:
+    """One night's entries for one viewer, and the nights either side of it.
+
+    `profile_id` narrows the page to a single profile: its entries, and its own nights. The
+    dates follow the filter deliberately -- offering a night this profile never ran would step
+    the reader onto an empty page with nothing to explain it. "Latest" becomes that profile's
+    own latest night for the same reason. The caller checks the id with `require_profile`
+    first, so another artist's id is a 404 long before it reaches these queries.
+    """
     # `now` decides which conversations still count as open. It defaults rather than being
     # required because every caller already passes `today` and none of them has a clock to hand;
     # a test that needs a fixed one supplies it.
@@ -144,12 +171,13 @@ def digest_view(
         session.scalars(
             select(Outreach.digest_date)
             .join(Profile, Profile.id == Outreach.profile_id)
-            .where(visible_to(viewer, Profile.artist_id))
+            .where(visible_to(viewer, Profile.artist_id), _on_profile(profile_id))
             .distinct()
             .order_by(Outreach.digest_date.desc())
         )
     )
     show_artists = viewer.is_admin or len(viewer.artist_ids) > 1
+    filter_profiles = _filter_profiles(session, viewer)
     chosen = digest_date if digest_date is not None else (dates[0] if dates else None)
     if chosen is None:
         return DigestView(
@@ -159,16 +187,42 @@ def digest_view(
             earlier_date=None,
             later_date=None,
             show_artists=show_artists,
+            filter_profiles=filter_profiles,
+            chosen_profile_id=profile_id,
         )
 
     return DigestView(
         digest_date=chosen,
-        profiles=_profiles(session, chosen, today, viewer, now or datetime.now(UTC)),
+        profiles=_profiles(session, chosen, today, viewer, now or datetime.now(UTC), profile_id),
         counts=_counts(session, chosen) if viewer.is_admin else (),
         earlier_date=next((day for day in dates if day < chosen), None),
         later_date=next((day for day in reversed(dates) if day > chosen), None),
         show_artists=show_artists,
+        filter_profiles=filter_profiles,
+        chosen_profile_id=profile_id,
     )
+
+
+def _on_profile(profile_id: int | None) -> ColumnElement[bool]:
+    """A WHERE clause narrowing to one profile, or one that narrows nothing when there's no filter."""
+    return true() if profile_id is None else Outreach.profile_id == profile_id
+
+
+def _filter_profiles(session: Session, viewer: Viewer) -> tuple[tuple[int, str], ...]:
+    """Every profile the viewer could filter to: one with entries on some night, not just tonight.
+
+    Deliberately narrowed by neither the chosen night nor the current filter. The row has to
+    hold still as the reader steps between nights, and it has to offer the way back from a
+    night the chosen profile happened to miss.
+    """
+    rows = session.execute(
+        select(Profile.id, Profile.name)
+        .join(Outreach, Outreach.profile_id == Profile.id)
+        .where(visible_to(viewer, Profile.artist_id))
+        .distinct()
+    )
+    profiles = [(row_id, name) for row_id, name in rows]
+    return tuple(sorted(profiles, key=lambda profile: profile[1].casefold()))
 
 
 def entry_view(session: Session, outreach_id: int, *, today: date) -> EntryView:
@@ -180,7 +234,7 @@ def entry_view(session: Session, outreach_id: int, *, today: date) -> EntryView:
 
 
 def _profiles(
-    session: Session, chosen: date, today: date, viewer: Viewer, now: datetime
+    session: Session, chosen: date, today: date, viewer: Viewer, now: datetime, profile_id: int | None
 ) -> tuple[ProfileDigest, ...]:
     # Keyed on ids, not names: artist names are unique only case-sensitively, and two artists
     # could otherwise collide here even though `visible_to` and the profiles page never confuse
@@ -193,7 +247,11 @@ def _profiles(
             _entry_rows()
             .join(Artist, Artist.id == Profile.artist_id)
             .add_columns(Artist.id, Artist.name)
-            .where(Outreach.digest_date == chosen, visible_to(viewer, Profile.artist_id))
+            .where(
+                Outreach.digest_date == chosen,
+                visible_to(viewer, Profile.artist_id),
+                _on_profile(profile_id),
+            )
             .order_by(Outreach.id)
         )
     )
