@@ -1,13 +1,15 @@
 """The Claude stages of a run: contact research, then the digest.
 
 `run_pipeline` knows nothing about Claude. It calls each stage with the session, the run and
-the night's dates, and prints the lines the stage reports. Research reads the nightly budget
-from the web app's settings as it starts, so the limit Jarred sets that evening is the one
-that applies. It gets only what's left of that budget after evaluation's fit checks.
+the night's dates, and prints the lines the stage reports. Each stage reads the nightly budget
+from the web app's settings once, as it starts, so the limit Jarred sets that evening is the
+one that applies. Research gets what's left after evaluation's fit checks, and the digest gets
+what's left after research. Reading it once rather than per lead or per entry keeps both loops
+cheap and easy to reason about.
 
 The run report says plainly what happened: how many curators were researched and reached,
-what Claude cost against the budget, what was left for another night, and whether a profile
-got fewer than 10 digest entries.
+what Claude cost against the budget, what was left for another night, whether briefs came out
+plain and why, and whether a profile got fewer than 10 digest entries.
 """
 
 from collections.abc import Callable
@@ -39,7 +41,9 @@ def research_stage(*, pages: PageSource, agent: ResearchAgent | None) -> Callabl
 
 def digest_stage(*, writer: BriefWriter | None) -> Callable[..., StageReport]:
     def stage(session: Session, *, run: Run, today: date, now: datetime) -> StageReport:
-        summary = build_digest(session, writer=writer, run=run, today=today, now=now)
+        spent_so_far = run.llm_spend_usd or Decimal(0)
+        left = max(Decimal(0), nightly_claude_budget(session) - spent_so_far)
+        summary = build_digest(session, writer=writer, run=run, today=today, now=now, spend_cap_usd=left)
         return StageReport("Digest", tuple(_digest_lines(summary)))
 
     return stage
@@ -69,6 +73,12 @@ def _digest_lines(summary: DigestSummary) -> list[str]:
     if summary.template_briefs:
         plural = "brief" if summary.template_briefs == 1 else "briefs"
         lines.append(f"{summary.template_briefs} plain {plural}, because Claude couldn't write them")
+    if summary.budget_briefs:
+        plural = "brief" if summary.budget_briefs == 1 else "briefs"
+        lines.append(
+            f"{summary.budget_briefs} plain {plural}, because the nightly Claude budget was reached. "
+            "Every lead is still here; raise it on the Profiles page for written briefs."
+        )
     lines.append(f"Claude spend ${summary.spend_usd:.2f}")
     lines.extend(f"error: {error}" for error in summary.errors)
     return lines

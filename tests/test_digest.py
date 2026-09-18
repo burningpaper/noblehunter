@@ -101,10 +101,18 @@ class FakeWriter:
         )
 
 
-def digest_tonight(session, writer=None):
+PLENTY = Decimal("10.00")
+
+
+def digest_tonight(session, writer=None, cap: Decimal = PLENTY):
     run = start_run(session)
     summary = build_digest(
-        session, writer=writer if writer is not None else FakeWriter(), run=run, today=TODAY, now=NOW
+        session,
+        writer=writer if writer is not None else FakeWriter(),
+        run=run,
+        today=TODAY,
+        now=NOW,
+        spend_cap_usd=cap,
     )
     return run, summary
 
@@ -245,9 +253,64 @@ class TestWriting:
         ready_lead(session, active_profile(session))
         run = start_run(session)
 
-        summary = build_digest(session, writer=None, run=run, today=TODAY, now=NOW)
+        summary = build_digest(session, writer=None, run=run, today=TODAY, now=NOW, spend_cap_usd=PLENTY)
 
         assert summary.template_briefs == 1
+        assert len(entries_today(session)) == 1
+
+
+class TestBudget:
+    """Briefs stop at the nightly cap, but a spent budget never costs a lead (run 8, 2026-09-18)."""
+
+    def leads(self, session, count: int):
+        profile = active_profile(session, digest_target=count)
+        for _ in range(count):
+            ready_lead(session, profile)
+        return profile
+
+    def test_with_money_to_spare_claude_writes_every_brief(self, session):
+        self.leads(session, 3)
+        writer = FakeWriter()
+
+        _, summary = digest_tonight(session, writer)
+
+        assert len(writer.requests) == 3
+        assert len(entries_today(session)) == 3
+        assert (summary.budget_briefs, summary.template_briefs) == (0, 0)
+
+    def test_a_spent_budget_still_hands_over_every_lead(self, session):
+        self.leads(session, 3)
+        writer = FakeWriter()
+
+        run, summary = digest_tonight(session, writer, cap=Decimal(0))
+
+        assert writer.requests == []
+        entries = entries_today(session)
+        assert len(entries) == 3
+        assert all("Autechre" in entry.brief_text for entry in entries)
+        assert (summary.entries, summary.budget_briefs, summary.template_briefs) == (3, 3, 0)
+        assert (summary.spend_usd, run.llm_spend_usd) == (Decimal(0), Decimal(0))
+
+    def test_when_the_money_runs_out_partway_the_later_briefs_are_plain(self, session):
+        self.leads(session, 3)
+        writer = FakeWriter()
+
+        # Two briefs at a cent each reach a two-cent cap, so the third is written from the facts.
+        _, summary = digest_tonight(session, writer, cap=Decimal("0.02"))
+
+        assert len(writer.requests) == 2
+        entries = entries_today(session)
+        assert len(entries) == 3
+        assert sum("Autechre" in entry.brief_text for entry in entries) == 1
+        assert (summary.budget_briefs, summary.template_briefs) == (1, 0)
+        assert summary.spend_usd == Decimal("0.02")
+
+    def test_a_brief_claude_fumbled_is_not_counted_against_the_budget(self, session):
+        self.leads(session, 1)
+
+        _, summary = digest_tonight(session, FakeWriter(error=RuntimeError("overloaded")))
+
+        assert (summary.template_briefs, summary.budget_briefs) == (1, 0)
         assert len(entries_today(session)) == 1
 
 

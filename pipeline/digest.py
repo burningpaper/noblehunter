@@ -9,9 +9,12 @@ the scale of the fit score. A curator appears once, under the profile they fit b
 profile takes at most its digest target.
 
 Each entry gets a brief from Claude. If Claude can't write one, a plain template brief is used
-instead, so a flaky API never costs Jarred his morning list. Entries are committed one at a
-time and their playlists marked `digested`, with the outreach table's 90-day constraint as
-the backstop. Running again the same day only tops the digest up.
+instead, so a flaky API never costs Jarred his morning list. The same fallback catches the
+night's Claude budget running out: once `spend_cap_usd` is reached the briefs stop being
+written, but every lead still becomes an entry, because a lead is worth far more than a
+well-worded brief and handing over fewer of them to save a cent would be the worse bug.
+Entries are committed one at a time and their playlists marked `digested`, with the outreach
+table's 90-day constraint as the backstop. Running again the same day only tops the digest up.
 
 Which contact to use comes from `core.contact_routes`, the same rule the digest page shows.
 """
@@ -100,6 +103,9 @@ class BriefWriter(Protocol):
 class DigestSummary:
     entries: int = 0
     template_briefs: int = 0
+    # Plain briefs the budget caused, kept apart from the ones Claude fumbled: a person reading a
+    # quiet night's report needs to tell "the money ran out" from "the API failed".
+    budget_briefs: int = 0
     spend_usd: Decimal = Decimal(0)
     per_profile: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
@@ -115,7 +121,13 @@ class _Candidate:
 
 
 def build_digest(
-    session: Session, *, writer: BriefWriter | None, run: Run, today: date, now: datetime
+    session: Session,
+    *,
+    writer: BriefWriter | None,
+    run: Run,
+    today: date,
+    now: datetime,
+    spend_cap_usd: Decimal,
 ) -> DigestSummary:
     summary = DigestSummary()
     candidates = _ranked_candidates(session, today, now)
@@ -133,7 +145,7 @@ def build_digest(
         playlist, profile = candidate.playlist, candidate.profile
         if playlist.curator_id in used_curators or taken.get(profile.id, 0) >= allowances.get(profile.id, 0):
             continue
-        brief = _write_brief(writer, _brief_request(candidate, now), summary)
+        brief = _write_brief(writer, _brief_request(candidate, now), summary, spend_cap_usd)
         if not _add_entry(session, candidate, brief, today):
             continue
         playlist.status = PlaylistStatus.DIGESTED
@@ -271,8 +283,15 @@ def _brief_request(candidate: _Candidate, now: datetime) -> BriefRequest:
     )
 
 
-def _write_brief(writer: BriefWriter | None, request: BriefRequest, summary: DigestSummary) -> Brief:
+def _write_brief(
+    writer: BriefWriter | None, request: BriefRequest, summary: DigestSummary, spend_cap_usd: Decimal
+) -> Brief:
     if writer is not None:
+        if summary.spend_usd >= spend_cap_usd:
+            # The night's money is gone. Research stops at this same boundary (spend >= cap), but
+            # the digest mustn't stop with it: the entry is still written, from the facts alone.
+            summary.budget_briefs += 1
+            return template_brief(request)
         try:
             brief = writer.write(request)
         except Exception as error:

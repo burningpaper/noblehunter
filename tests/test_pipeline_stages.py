@@ -77,6 +77,29 @@ def test_the_digest_reports_entries_per_profile(session, monkeypatch):
     assert "fewer than" not in text
 
 
+def test_the_digest_says_when_the_budget_made_the_briefs_plain(session, monkeypatch):
+    summary = DigestSummary(entries=12, budget_briefs=3, per_profile={"Synman": 12})
+    monkeypatch.setattr(stages, "build_digest", lambda session, **kwargs: summary)
+
+    report = stages.digest_stage(writer="writer")(session, run=start_run(session), today=TODAY, now=NOW)
+
+    text = "\n".join(report.lines)
+    assert "3 plain briefs" in text
+    assert "budget" in text.lower()
+    assert "couldn't write" not in text
+
+
+def test_a_brief_claude_fumbled_is_not_blamed_on_the_budget(session, monkeypatch):
+    summary = DigestSummary(entries=12, template_briefs=2, per_profile={"Synman": 12})
+    monkeypatch.setattr(stages, "build_digest", lambda session, **kwargs: summary)
+
+    report = stages.digest_stage(writer="writer")(session, run=start_run(session), today=TODAY, now=NOW)
+
+    text = "\n".join(report.lines)
+    assert "2 plain briefs, because Claude couldn't write them" in text
+    assert "budget" not in text.lower()
+
+
 def test_a_small_digest_says_so_plainly(session, monkeypatch):
     summary = DigestSummary(entries=4, per_profile={"Synman": 4})
     monkeypatch.setattr(stages, "build_digest", lambda session, **kwargs: summary)
