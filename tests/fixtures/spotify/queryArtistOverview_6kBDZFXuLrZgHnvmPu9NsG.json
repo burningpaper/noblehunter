@@ -1,0 +1,343 @@
+{
+  "data": {
+    "artistUnion": {
+      "id": "6kBDZFXuLrZgHnvmPu9NsG",
+      "uri": "spotify:artist:6kBDZFXuLrZgHnvmPu9NsG",
+      "profile": {
+        "name": "Aphex Twin"
+      },
+      "relatedContent": {
+        "discoveredOnV2": {
+          "totalCount": 100,
+          "items": [
+            {
+              "data": {
+                "__typename": "GenericError"
+              }
+            },
+            {
+              "data": {
+                "__typename": "GenericError"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "This is Aphex Twin. The essential tracks, all in one playlist.",
+                "id": "37i9dQZF1DZ06evO3JKYkV",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/6kBDZFXuLrZgHnvmPu9NsG/en",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "This Is Aphex Twin",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DZ06evO3JKYkV"
+              }
+            },
+            {
+              "data": {
+                "__typename": "GenericError"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "soft songs that will help you sleep",
+                "id": "68JXTKfqFZEWO1DQRdVndh",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da8493b7de494fa00493be598150",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Sleep Playlist 😴💤",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "macylee124"
+                  }
+                },
+                "uri": "spotify:playlist:68JXTKfqFZEWO1DQRdVndh"
+              }
+            },
+            {
+              "data": {
+                "__typename": "GenericError"
+              }
+            },
+            {
+              "data": {
+                "__typename": "GenericError"
+              }
+            },
+            {
+              "data": {
+                "__typename": "GenericError"
+              }
+            }
+          ]
+        },
+        "featuringV2": {
+          "totalCount": 8,
+          "items": [
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "This is Aphex Twin. The essential tracks, all in one playlist.",
+                "id": "37i9dQZF1DZ06evO3JKYkV",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/6kBDZFXuLrZgHnvmPu9NsG/en",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "This Is Aphex Twin",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DZ06evO3JKYkV"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "Enter the backrooms. Co-curated by Kane Parsons.",
+                "id": "37i9dQZF1DWZ7VnoXD1s7S",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f00000002b49561dd764848ca5a90709b",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "liminal",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DWZ7VnoXD1s7S"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "songs that make you feel like you're levitating",
+                "id": "37i9dQZF1DWVY5eNJoKHd2",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f0000000245b715182e164258989971d5",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Levitate",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DWVY5eNJoKHd2"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "all the best instrumentals & sounds from the internet  ∼ 🫀",
+                "id": "37i9dQZF1DX16doZpno3Aw",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f00000002dcb07adf52283d2015ff50fc",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "trending moods (no lyrics)",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DX16doZpno3Aw"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "Dedicated to all the programmers out there.",
+                "id": "37i9dQZF1DX5trt9i14X7j",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f00000002863b311d4b787ed621f7e696",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Coding Mode  ",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DX5trt9i14X7j"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "Only music produced on a TR-808 drum machine. Cover: Egyptian Lover",
+                "id": "37i9dQZF1DX2SiqF4iBnmO",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f0000000262996682e8ce124a868fb0da",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "808 Classics",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DX2SiqF4iBnmO"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "Explore the inner worlds floating in the imagination of experimental Ambient music producers.",
+                "id": "37i9dQZF1DX8OUvJF6ATAB",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f000000029ab5593845fa3c89e688f143",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Exospheres",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DX8OUvJF6ATAB"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "All the greatest Ambient tracks in one place. Cover: Brian Eno",
+                "id": "37i9dQZF1DWUrPBdYfoJvz",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f0000000255373f51f8c4859727c868ff",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Ambient Essentials",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DWUrPBdYfoJvz"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "data": {
+    "searchV2": {
+      "artists": {
+        "pagingInfo": {
+          "limit": 30,
+          "nextOffset": 30
+        },
+        "totalCount": 102,
+        "items": [
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "Aphex Twin"
+              },
+              "uri": "spotify:artist:6kBDZFXuLrZgHnvmPu9NsG"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "Aphex Twin"
+              },
+              "uri": "spotify:artist:0J35fLDeWGUe9PdQdv8uh9"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "AFX"
+              },
+              "uri": "spotify:artist:6ULjGlnhcCwHIJigN47K5U"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "aphex twink"
+              },
+              "uri": "spotify:artist:5Ea01KqLoX4lMgTo8z3J3g"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "Eem Triplin"
+              },
+              "uri": "spotify:artist:5kxnZh8gXyXdIvCWbDMevT"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "M83"
+              },
+              "uri": "spotify:artist:63MQldklfxkjYDoUE4Tppz"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "SaxbyTwins"
+              },
+              "uri": "spotify:artist:4gKoJlqp9vHQYvXF41yrNJ"
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "data": {
+              "__typename": "Artist",
+              "profile": {
+                "name": "Isaiah Rashad"
+              },
+              "uri": "spotify:artist:6aaMZ3fcfLv4tEbmY7bjRM"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
