@@ -140,6 +140,7 @@ class SourceProvider(StrEnum):
     SERPER = "serper"
     BRAVE = "brave"
     NEIGHBOUR = "neighbour"
+    DISCOVERED_ON = "discovered-on"  # Spotify's own "Discovered on" artist section (migration 0008)
 
 
 class RunTrigger(StrEnum):
