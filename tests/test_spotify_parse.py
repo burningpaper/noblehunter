@@ -9,6 +9,9 @@ from pipeline.spotify import (
     ProfilePlaylist,
     RateLimiter,
     SpotifyFetchError,
+    SpotifyWebClient,
+    _artist_union_from_payload,
+    _is_artist_overview_request,
     _json_body,
     _playlist_v2_from_payload,
     _raise_for_status,
@@ -536,3 +539,91 @@ def test_planned_offsets_are_unique_in_range_and_cover_the_end(total):
     assert len(planned) == len(set(planned))
     assert all(25 <= offset < total for offset in planned)
     assert planned[-1] + 50 >= total
+
+
+# --- Artist overviews -------------------------------------------------------------------------
+
+ARTIST_ID = "6kBDZFXuLrZgHnvmPu9NsG"
+
+
+@pytest.fixture
+def artist_overview() -> dict:
+    return load(f"queryArtistOverview_{ARTIST_ID}.json")
+
+
+def overview_request(operation: str, url: str = PATHFINDER) -> FakeRequest:
+    return FakeRequest(url, json.dumps({"operationName": operation, "variables": {"uri": "anything"}}))
+
+
+def test_the_artist_overview_query_is_recognised():
+    assert _is_artist_overview_request(overview_request("queryArtistOverview")) is True
+
+
+@pytest.mark.parametrize(
+    "operation", ["fetchPlaylist", "queryArtistDiscographyAll", "queryArtistOverviewV2", ""]
+)
+def test_another_query_on_the_same_endpoint_is_not_the_overview(operation):
+    assert _is_artist_overview_request(overview_request(operation)) is False
+
+
+def test_the_same_query_somewhere_other_than_pathfinder_is_ignored():
+    request = overview_request("queryArtistOverview", url="https://open.spotify.com/artist/x")
+
+    assert _is_artist_overview_request(request) is False
+
+
+@pytest.mark.parametrize(
+    "post_data",
+    ['{"sent_at":"2026-09-21T02:00:00Z"}\n{"type":"session"}', "not json", "", None],
+    ids=["sentry envelope", "not json", "empty", "none"],
+)
+def test_a_request_without_a_json_body_is_not_the_overview(post_data):
+    assert _is_artist_overview_request(FakeRequest(PATHFINDER, post_data)) is False
+
+
+def test_artist_payload_unwraps_the_artist_it_was_asked_for(artist_overview):
+    artist_union = _artist_union_from_payload(artist_overview, ARTIST_ID)
+
+    assert artist_union["profile"]["name"] == "Aphex Twin"
+
+
+def test_a_payload_for_a_different_artist_is_a_parse_error(artist_overview):
+    """The capture is matched on operation name alone, so the answer has to identify itself."""
+    with pytest.raises(SpotifyFetchError) as raised:
+        _artist_union_from_payload(artist_overview, "0000000000000000000000")
+
+    assert raised.value.kind == "parse"
+    assert "Aphex Twin" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [[], {}, {"data": None}, {"data": {}}, {"data": {"artistUnion": None}}, {"data": {"artistUnion": {}}}],
+    ids=["list", "empty", "no data", "no artist", "null artist", "artist with no uri"],
+)
+def test_an_artist_payload_of_unexpected_shape_is_a_parse_error(payload):
+    with pytest.raises(SpotifyFetchError) as raised:
+        _artist_union_from_payload(payload, ARTIST_ID)
+
+    assert raised.value.kind == "parse"
+
+
+def test_an_artist_payload_with_graphql_errors_is_an_http_error():
+    payload = {"errors": [{"message": "PersistedQueryNotFound"}], "data": None}
+
+    with pytest.raises(SpotifyFetchError, match="PersistedQueryNotFound") as raised:
+        _artist_union_from_payload(payload, ARTIST_ID)
+
+    assert raised.value.kind == "http"
+
+
+@pytest.mark.parametrize(
+    "artist_id",
+    ["", "   ", "short", "spotify:artist:6kBDZFXuLrZgHnvmPu9NsG", "6kBDZFXuLrZgHnvmPu9Ns!"],
+    ids=["empty", "blank", "too short", "a uri", "not base62"],
+)
+def test_fetch_artist_overview_rejects_a_bad_id_before_opening_a_browser(artist_id):
+    # No context manager, so a browser would raise RuntimeError: the ValueError proves the
+    # id is checked first, and that a typo never costs a page load.
+    with pytest.raises(ValueError, match="artist ID"):
+        SpotifyWebClient().fetch_artist_overview(artist_id)

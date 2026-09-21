@@ -24,10 +24,10 @@ from typing import Protocol
 
 import httpx
 
+from pipeline.spotify import SPOTIFY_OWNED_PREFIX
+
 QUERY_PREFIX = "site:open.spotify.com/playlist "
 PLAYLIST_URL = re.compile(r"open\.spotify\.com/(?:intl-[a-z-]+/)?playlist/([A-Za-z0-9]{22})")
-# Spotify's own editorial and algorithmic playlists. Nobody there reads pitches from us.
-SPOTIFY_OWNED_PREFIX = "37i9dQZF1"
 
 SERPER_URL = "https://google.serper.dev/search"
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"

@@ -16,6 +16,10 @@ The Stage 0 spike taught us four things, and each one shaped this module:
 - A missing playlist or user is a plain 404 page and the player never calls its API, so we
   check the document status instead of waiting out a timeout.
 
+The same trick reads an artist page. `fetch_artist_overview` captures `queryArtistOverview`,
+whose `discoveredOnV2` section names the playlists people found that artist through; the
+reading of it lives in `pipeline.discovered_on`, because this module can only be tested live.
+
 The page also loads reCAPTCHA. No challenge appeared at spike volume, and politeness keeps it
 that way: one page load every few seconds and a pause between replayed pages. Tokens never
 appear in errors or logs.
@@ -44,13 +48,19 @@ logger = logging.getLogger(__name__)
 PLAYER_URL = "https://open.spotify.com"
 PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v2/query"
 PROFILE_API_URL = "https://spclient.wg.spotify.com/user-profile-view/v3/profile/"
+ARTIST_OVERVIEW_OPERATION = "queryArtistOverview"
 PLAYLIST_HEADERS = ("authorization", "client-token", "app-platform", "spotify-app-version", "content-type")
 PROFILE_HEADERS = ("authorization", "client-token", "app-platform", "spotify-app-version")
 PLAYLIST_PAGE_SIZE = 50
 PROFILE_PAGE_SIZE = 200
 MAX_PROFILE_PAGES = 100  # 20,000 playlists: far beyond any real curator, so hitting it means a paging bug
 
-PLAYLIST_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{22}$")
+# Playlists, artists and users all wear the same 22-character base62 id, so one pattern checks
+# any of them. It is a shape check, not an existence check: a well-formed id can still 404.
+SPOTIFY_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{22}$")
+# Spotify's own editorial and algorithmic playlists. Nobody there reads pitches from us, so
+# every discovery source drops them -- which is why the prefix lives here rather than in one.
+SPOTIFY_OWNED_PREFIX = "37i9dQZF1"
 TAG_PATTERN = re.compile(r"<[^>]*>")
 RETRYABLE_KINDS = frozenset({"timeout", "http"})
 BLOCKED_STATUSES = frozenset({403, 429})
@@ -236,6 +246,37 @@ def _first_error_message(payload: dict) -> str:
     return str(message or "no message")[:100]
 
 
+def _is_artist_overview_request(request: "Request") -> bool:
+    """Spot the artist page asking for its own overview, by operation name alone.
+
+    The playlist fetcher also matches on `variables.uri`, because the player fires
+    `fetchPlaylist` for more than one playlist while a page is loading. An artist page asks
+    for this operation for the artist whose page it is, and -- unlike a request variable,
+    whose key we would be guessing from a response capture -- the answer names that artist
+    itself. So identity is checked on the reply, where a fixture can prove the check works.
+    """
+    if not request.url.startswith(PATHFINDER_URL):
+        return False
+    return _json_body(request).get("operationName") == ARTIST_OVERVIEW_OPERATION
+
+
+def _artist_union_from_payload(payload: object, artist_id: str) -> dict:
+    """Unwrap `data.artistUnion`, insisting it is the artist we actually asked for."""
+    what = f"Artist {artist_id}"
+    if not isinstance(payload, dict):
+        raise SpotifyFetchError("parse", f"{what}: response is not a JSON object")
+    if payload.get("errors"):
+        raise SpotifyFetchError("http", f"{what}: API returned errors ({_first_error_message(payload)})")
+    data = payload.get("data")
+    artist_union = data.get("artistUnion") if isinstance(data, dict) else None
+    if not isinstance(artist_union, dict):
+        raise SpotifyFetchError("parse", f"{what}: response has no data.artistUnion")
+    if artist_union.get("uri") != f"spotify:artist:{artist_id}":
+        # Name no names: the payload carries an artist's name and playlist titles.
+        raise SpotifyFetchError("parse", f"{what}: response is for a different artist")
+    return artist_union
+
+
 # --- Politeness and resilience ----------------------------------------------------------------
 
 
@@ -358,7 +399,7 @@ class SpotifyWebClient:
         self._browser = self._playwright = None
 
     def fetch_playlist(self, spotify_id: str) -> PlaylistData:
-        if not PLAYLIST_ID_PATTERN.match(spotify_id):
+        if not SPOTIFY_ID_PATTERN.match(spotify_id):
             raise ValueError(f"Not a Spotify playlist ID: {spotify_id!r}")
         return call_with_retries(lambda: self._fetch_playlist_once(spotify_id), self._retries)
 
@@ -369,6 +410,16 @@ class SpotifyWebClient:
         if owned_only:
             return [playlist for playlist in playlists if playlist.owner_id == user_id]
         return playlists
+
+    def fetch_artist_overview(self, artist_id: str) -> dict:
+        """The artist page's own `queryArtistOverview` response, exactly as Spotify sent it.
+
+        Handed back whole rather than parsed, because the only thing that reads it --
+        `pipeline.discovered_on` -- is tested against captured payloads and this is not.
+        """
+        if not SPOTIFY_ID_PATTERN.match(artist_id):
+            raise ValueError(f"Not a Spotify artist ID: {artist_id!r}")
+        return call_with_retries(lambda: self._fetch_artist_overview_once(artist_id), self._retries)
 
     # Playlists
 
@@ -464,6 +515,20 @@ class SpotifyWebClient:
         raise SpotifyFetchError(
             "parse", f"{what}: playlist paging did not end after {MAX_PROFILE_PAGES} pages"
         )
+
+    # Artists
+
+    def _fetch_artist_overview_once(self, artist_id: str) -> dict:
+        what = f"Artist {artist_id}"
+        path = f"/artist/{artist_id}"
+
+        with self._player_page() as page, _browser_errors_as_fetch_errors(what):
+            request = self._load_and_capture(page, path, _is_artist_overview_request, what)
+            payload = self._response_json(request, what)
+        # Checked after the page closes: a wrong or empty answer is a parse problem, not a
+        # browser one, and this is the check that lets the capture match on name alone.
+        _artist_union_from_payload(payload, artist_id)
+        return payload
 
     # Shared browser plumbing
 
