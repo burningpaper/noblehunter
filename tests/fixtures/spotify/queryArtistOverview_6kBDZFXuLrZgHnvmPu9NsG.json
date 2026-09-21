@@ -12,16 +12,6 @@
           "items": [
             {
               "data": {
-                "__typename": "GenericError"
-              }
-            },
-            {
-              "data": {
-                "__typename": "GenericError"
-              }
-            },
-            {
-              "data": {
                 "__typename": "Playlist",
                 "description": "This is Aphex Twin. The essential tracks, all in one playlist.",
                 "id": "37i9dQZF1DZ06evO3JKYkV",
@@ -47,11 +37,6 @@
                   }
                 },
                 "uri": "spotify:playlist:37i9dQZF1DZ06evO3JKYkV"
-              }
-            },
-            {
-              "data": {
-                "__typename": "GenericError"
               }
             },
             {
@@ -85,7 +70,128 @@
             },
             {
               "data": {
-                "__typename": "GenericError"
+                "__typename": "Playlist",
+                "description": "Featuring tracks from Selected Fart and Screaming Works 85-92, Jeremy H. Elbertson Album, I Say Swears... Because You Do, suskQs, and Spheero",
+                "id": "4IG2L9hS3YqAIy4peznwSZ",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da84645a86fb9d221390778be7e5",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Best of Aphex Twin",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "creeperrandom"
+                  }
+                },
+                "uri": "spotify:playlist:4IG2L9hS3YqAIy4peznwSZ"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "Enter the backrooms. Co-curated by Kane Parsons.",
+                "id": "37i9dQZF1DWZ7VnoXD1s7S",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://i.scdn.co/image/ab67706f00000002b49561dd764848ca5a90709b",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "liminal",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "Spotify"
+                  }
+                },
+                "uri": "spotify:playlist:37i9dQZF1DWZ7VnoXD1s7S"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "💧welcome to the frutiger aero realm 🌐",
+                "id": "5tHLi307wjZY2ePmVQSgkG",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": null,
+                          "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da844bc587f9deccef415927a3a6",
+                          "width": null
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "★ frutiger aero 🏙🐠🌱",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "emEtophobic"
+                  }
+                },
+                "uri": "spotify:playlist:5tHLi307wjZY2ePmVQSgkG"
+              }
+            },
+            {
+              "data": {
+                "__typename": "Playlist",
+                "description": "",
+                "id": "5XtTnickq6y2jVULZGtdpA",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        {
+                          "height": 640,
+                          "url": "https://mosaic.scdn.co/640/ab67616d00001e0232083f1a325ed4939f1fbecdab67616d00001e0238906032688bb13b135ce19aab67616d00001e028b68d772e75d4f280cea0ef0ab67616d00001e02a5aef98a1762d0f64bb6ed9a",
+                          "width": 640
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://mosaic.scdn.co/300/ab67616d00001e0232083f1a325ed4939f1fbecdab67616d00001e0238906032688bb13b135ce19aab67616d00001e028b68d772e75d4f280cea0ef0ab67616d00001e02a5aef98a1762d0f64bb6ed9a",
+                          "width": 300
+                        },
+                        {
+                          "height": 60,
+                          "url": "https://mosaic.scdn.co/60/ab67616d00001e0232083f1a325ed4939f1fbecdab67616d00001e0238906032688bb13b135ce19aab67616d00001e028b68d772e75d4f280cea0ef0ab67616d00001e02a5aef98a1762d0f64bb6ed9a",
+                          "width": 60
+                        }
+                      ]
+                    }
+                  ],
+                  "totalCount": 1
+                },
+                "name": "Aphex Twin - sleep mix",
+                "ownerV2": {
+                  "data": {
+                    "__typename": "User",
+                    "name": "blackfoal"
+                  }
+                },
+                "uri": "spotify:playlist:5XtTnickq6y2jVULZGtdpA"
               }
             },
             {

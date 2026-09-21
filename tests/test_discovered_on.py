@@ -22,8 +22,16 @@ from pipeline.discovered_on import discovered_on_playlist_ids
 
 FIXTURES = Path(__file__).parent / "fixtures" / "spotify"
 ARTIST_ID = "6kBDZFXuLrZgHnvmPu9NsG"
-EDITORIAL_ID = "37i9dQZF1DZ06evO3JKYkV"  # "This Is Aphex Twin", Spotify's own
-PITCHABLE_ID = "68JXTKfqFZEWO1DQRdVndh"  # "Sleep Playlist", a real person's
+EDITORIAL_ID = "37i9dQZF1DZ06evO3JKYkV"  # "This Is Aphex Twin", Spotify's own, at position 0
+# The four a person actually curates, in the order Spotify listed them. Two editorial entries
+# sit among them (positions 0 and 3 of the capture), so asserting this exact list proves the
+# filter removes them without disturbing the order of what remains.
+PITCHABLE_IDS = [
+    "68JXTKfqFZEWO1DQRdVndh",  # Sleep Playlist
+    "4IG2L9hS3YqAIy4peznwSZ",  # Best of Aphex Twin
+    "5tHLi307wjZY2ePmVQSgkG",  # frutiger aero
+    "5XtTnickq6y2jVULZGtdpA",  # Aphex Twin - sleep mix
+]
 
 
 def load(name: str) -> dict:
@@ -66,7 +74,10 @@ def sections(payload: dict) -> dict:
 
 
 def test_reads_the_pitchable_playlists_from_a_real_artist_page(overview):
-    assert discovered_on_playlist_ids(overview) == [PITCHABLE_ID]
+    # Two editorial entries sit at positions 0 and 3 of the capture, so this proves the order
+    # is Spotify's own *and* that filtering doesn't disturb it -- which the earlier fixture,
+    # carrying a single pitchable id, could not.
+    assert discovered_on_playlist_ids(overview) == PITCHABLE_IDS
 
 
 def test_spotifys_own_editorial_playlist_is_dropped(overview):
@@ -79,11 +90,17 @@ def test_spotifys_own_editorial_playlist_is_dropped(overview):
 
 
 def test_entries_spotify_would_not_expand_are_skipped_rather_than_crashing(overview):
-    """Six of the capture's eight entries came back as `GenericError` with no uri at all."""
-    items = sections(overview)["discoveredOnV2"]["items"]
-    assert sum(1 for entry in items if "uri" not in (entry.get("data") or {})) == 6
+    """Real captures carry `GenericError` entries with no uri at all, and must not be fatal.
 
-    assert discovered_on_playlist_ids(overview) == [PITCHABLE_ID]
+    The first capture of this page returned six of eight that way; the second returned two.
+    The count is Spotify's mood on the day, so it isn't asserted -- what matters is that such
+    entries exist in the fixture at all, and that the parser walks past them.
+    """
+    items = sections(overview)["discoveredOnV2"]["items"]
+    stubs = [entry for entry in items if "uri" not in (entry.get("data") or {})]
+    assert stubs, "the fixture must keep some unexpandable entries, or this proves nothing"
+
+    assert discovered_on_playlist_ids(overview) == PITCHABLE_IDS
 
 
 def test_no_playlist_from_the_featuring_section_comes_back(overview):
