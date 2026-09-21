@@ -20,6 +20,10 @@ The same trick reads an artist page. `fetch_artist_overview` captures `queryArti
 whose `discoveredOnV2` section names the playlists people found that artist through; the
 reading of it lives in `pipeline.discovered_on`, because this module can only be tested live.
 
+`fetch_artist_search` is its sibling over the search page's `searchArtists`, and exists because
+the artist page needs an id while profiles store names. It hands the answer back unexamined:
+whether a hit is the act somebody meant is `pipeline.artist_ids`' decision, and a careful one.
+
 The page also loads reCAPTCHA. No challenge appeared at spike volume, and politeness keeps it
 that way: one page load every few seconds and a pause between replayed pages. Tokens never
 appear in errors or logs.
@@ -49,6 +53,7 @@ PLAYER_URL = "https://open.spotify.com"
 PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v2/query"
 PROFILE_API_URL = "https://spclient.wg.spotify.com/user-profile-view/v3/profile/"
 ARTIST_OVERVIEW_OPERATION = "queryArtistOverview"
+ARTIST_SEARCH_OPERATION = "searchArtists"
 PLAYLIST_HEADERS = ("authorization", "client-token", "app-platform", "spotify-app-version", "content-type")
 PROFILE_HEADERS = ("authorization", "client-token", "app-platform", "spotify-app-version")
 PLAYLIST_PAGE_SIZE = 50
@@ -260,6 +265,33 @@ def _is_artist_overview_request(request: "Request") -> bool:
     return _json_body(request).get("operationName") == ARTIST_OVERVIEW_OPERATION
 
 
+def artist_search_path(name: str) -> str:
+    """The player's own artists-tab URL for a name, with every character encoded.
+
+    `safe=''` rather than the default, which leaves "/" alone: an artist called "AC/DC" would
+    otherwise be asked for as `/search/AC/DC/artists`, a different page entirely. Accents and
+    spaces are the everyday case -- the reference artists include `Ólafur Arnalds`.
+    """
+    return f"/search/{quote(name, safe='')}/artists"
+
+
+def _is_artist_search_request(request: "Request") -> bool:
+    """Spot the search page asking for its artist results, by operation name alone.
+
+    Matched the way `_is_artist_overview_request` is matched, and for the same reason: the
+    fixture is a *response*, so it cannot say which key the request put the query under, and a
+    guessed variable name fails as a thirty-second timeout rather than as an error.
+
+    The overview then confirms identity on the reply, because `data.artistUnion.uri` names the
+    artist. A search reply names only its results, so there is nothing here to confirm -- which
+    is why `pipeline.artist_ids` checks the top hit's *name* against the name asked for. An
+    answer to the wrong question fails that check and stores nothing.
+    """
+    if not request.url.startswith(PATHFINDER_URL):
+        return False
+    return _json_body(request).get("operationName") == ARTIST_SEARCH_OPERATION
+
+
 def _artist_union_from_payload(payload: object, artist_id: str) -> dict:
     """Unwrap `data.artistUnion`, insisting it is the artist we actually asked for."""
     what = f"Artist {artist_id}"
@@ -421,6 +453,17 @@ class SpotifyWebClient:
             raise ValueError(f"Not a Spotify artist ID: {artist_id!r}")
         return call_with_retries(lambda: self._fetch_artist_overview_once(artist_id), self._retries)
 
+    def fetch_artist_search(self, name: str) -> object:
+        """The search page's own `searchArtists` response, exactly as Spotify sent it.
+
+        Handed back whole and untyped, because nothing in the reply identifies the query: there
+        is no check to make here that `pipeline.artist_ids` does not make better, against the
+        name that was asked for.
+        """
+        if not name or not name.strip():
+            raise ValueError("An artist name is required to search")
+        return call_with_retries(lambda: self._fetch_artist_search_once(name), self._retries)
+
     # Playlists
 
     def _fetch_playlist_once(self, spotify_id: str) -> PlaylistData:
@@ -529,6 +572,13 @@ class SpotifyWebClient:
         # browser one, and this is the check that lets the capture match on name alone.
         _artist_union_from_payload(payload, artist_id)
         return payload
+
+    def _fetch_artist_search_once(self, name: str) -> object:
+        what = f"Artist search for {name!r}"
+
+        with self._player_page() as page, _browser_errors_as_fetch_errors(what):
+            request = self._load_and_capture(page, artist_search_path(name), _is_artist_search_request, what)
+            return self._response_json(request, what)
 
     # Shared browser plumbing
 

@@ -12,9 +12,11 @@ from pipeline.spotify import (
     SpotifyWebClient,
     _artist_union_from_payload,
     _is_artist_overview_request,
+    _is_artist_search_request,
     _json_body,
     _playlist_v2_from_payload,
     _raise_for_status,
+    artist_search_path,
     call_with_retries,
     parse_playlist,
     parse_profile_playlists,
@@ -627,3 +629,75 @@ def test_fetch_artist_overview_rejects_a_bad_id_before_opening_a_browser(artist_
     # id is checked first, and that a typo never costs a page load.
     with pytest.raises(ValueError, match="artist ID"):
         SpotifyWebClient().fetch_artist_overview(artist_id)
+
+
+# --- Artist searches --------------------------------------------------------------------------
+
+
+def search_request(operation: str, url: str = PATHFINDER) -> FakeRequest:
+    return FakeRequest(url, json.dumps({"operationName": operation, "variables": {"searchTerm": "x"}}))
+
+
+def test_the_artist_search_query_is_recognised():
+    assert _is_artist_search_request(search_request("searchArtists")) is True
+
+
+@pytest.mark.parametrize(
+    "operation", ["searchDesktop", "searchAlbums", "searchArtistsV2", "queryArtistOverview", ""]
+)
+def test_another_query_on_the_same_endpoint_is_not_the_artist_search(operation):
+    # The search page fires several of these; taking the wrong one would resolve an artist
+    # from a payload about something else.
+    assert _is_artist_search_request(search_request(operation)) is False
+
+
+def test_the_search_query_somewhere_other_than_pathfinder_is_ignored():
+    request = search_request("searchArtists", url="https://open.spotify.com/search/x/artists")
+
+    assert _is_artist_search_request(request) is False
+
+
+@pytest.mark.parametrize(
+    "post_data",
+    ['{"sent_at":"2026-09-21T02:00:00Z"}\n{"type":"session"}', "not json", "", None],
+    ids=["sentry envelope", "not json", "empty", "none"],
+)
+def test_a_request_without_a_json_body_is_not_the_artist_search(post_data):
+    assert _is_artist_search_request(FakeRequest(PATHFINDER, post_data)) is False
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Aphex Twin", "/search/Aphex%20Twin/artists"),
+        ("Winged Victory for the Sullen", "/search/Winged%20Victory%20for%20the%20Sullen/artists"),
+        # Precomposed accents, which is what the profile editor stores. Were this file ever
+        # saved decomposed, the expected encoding would change and this test would say so.
+        ("Ólafur Arnalds", "/search/%C3%93lafur%20Arnalds/artists"),
+        ("Sigur Rós", "/search/Sigur%20R%C3%B3s/artists"),
+        ("AC/DC", "/search/AC%2FDC/artists"),
+        ("?uestlove", "/search/%3Fuestlove/artists"),
+        ("Simon & Garfunkel", "/search/Simon%20%26%20Garfunkel/artists"),
+    ],
+    ids=[
+        "a space",
+        "several spaces",
+        "an accent",
+        "an accent inside",
+        "a slash",
+        "a question mark",
+        "an and",
+    ],
+)
+def test_an_artist_name_is_encoded_into_the_search_path(name, expected):
+    # The slash is the one that matters: unencoded, "AC/DC" would ask for a different page
+    # and the fetch would either fail or answer about something else entirely.
+    assert artist_search_path(name) == expected
+
+
+@pytest.mark.parametrize("name", ["", "   ", "\t"], ids=["empty", "blank", "a tab"])
+def test_fetch_artist_search_rejects_a_blank_name_before_opening_a_browser(name):
+    # No context manager, so a browser would raise RuntimeError: the ValueError proves the
+    # name is checked first, and that an empty one never costs a page load.
+    with pytest.raises(ValueError, match="artist name"):
+        SpotifyWebClient().fetch_artist_search(name)
