@@ -423,6 +423,9 @@ class PipelineRunner:
                         profile_id=profile_id,
                         stages=stages,
                         fit_judge=self.fit_judge_for(),
+                        # The same client, not a second one: Playwright's sync API refuses to
+                        # start another browser while this one is running.
+                        artist_graph=spotify,
                     )
         logger.info("%s", describe_run(report))
         return report.run_id

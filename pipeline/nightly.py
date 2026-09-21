@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from core.models import Profile
 from core.profiles import get_profile
-from pipeline.discover import DiscoverySummary, discover_for_profile
+from pipeline.discover import ArtistGraph, DiscoveredOnOutcome, DiscoverySummary, discover_for_profile
 from pipeline.evaluate import EvaluationSummary, PlaylistFetcher, evaluate_candidates
 from pipeline.fit_judge import FitJudge
 from pipeline.runs import finish_run, start_run
@@ -64,6 +64,7 @@ def run_pipeline(
     fetch_limit: int | None = None,
     stages: Sequence[Stage] = (),
     fit_judge: FitJudge | None = None,
+    artist_graph: ArtistGraph | None = None,
 ) -> RunReport:
     profiles = _profiles_to_discover(session, profile_id)
     names = {profile.id: profile.name for profile in profiles}
@@ -74,7 +75,14 @@ def run_pipeline(
         discoveries = []
         for profile_id_to_search in names:
             discoveries.append(
-                discover_for_profile(session, profile_id_to_search, providers, run=run, today=today)
+                discover_for_profile(
+                    session,
+                    profile_id_to_search,
+                    providers,
+                    run=run,
+                    today=today,
+                    artist_graph=artist_graph,
+                )
             )
             session.commit()
         evaluation = evaluate_candidates(
@@ -106,6 +114,7 @@ def describe_run(report: RunReport) -> str:
     lines = [f"Run {report.run_id}"]
     for discovery in report.discoveries:
         lines.append(f"\n{report.profile_names[discovery.profile_id]}")
+        lines.extend(_discovered_on_lines(discovery.discovered_on))
         if not discovery.terms:
             lines.append("  no active search terms")
         for outcome in discovery.terms:
@@ -134,6 +143,23 @@ def describe_run(report: RunReport) -> str:
         lines.append(f"\n{stage.name}")
         lines.extend(f"  {line}" for line in stage.lines)
     return "\n".join(lines)
+
+
+def _discovered_on_lines(found: DiscoveredOnOutcome | None) -> list[str]:
+    """The artist graph's contribution, in the same voice as the per-term lines.
+
+    Nothing at all when the source didn't run, so a report from a caller that passes no client
+    reads exactly as it did before this existed.
+    """
+    if found is None:
+        return []
+    lines = [f"  Discovered on: {found.artists} artists, {found.playlists} playlists, {found.new} new"]
+    if found.unresolved:
+        # Naming them matters: each is one edit in the profile editor, and a silent zero would be
+        # indistinguishable from the whole source not running.
+        lines.append(f"    no Spotify id yet: {', '.join(found.unresolved)}")
+    lines.extend(f"    error: {error}" for error in found.errors)
+    return lines
 
 
 def _profiles_to_discover(session: Session, profile_id: int | None) -> list[Profile]:

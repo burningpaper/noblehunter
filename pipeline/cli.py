@@ -277,6 +277,9 @@ def run_command(
                         fetch_limit=fetch_limit,
                         stages=stages,
                         fit_judge=fit_judge,
+                        # The same client, not a second one: Playwright's sync API refuses to
+                        # start another browser while this one is running.
+                        artist_graph=spotify,
                     )
         typer.echo(describe_run(report))
     except MissingSettingError as error:

@@ -5,6 +5,8 @@ from datetime import UTC, date, datetime, time, timedelta
 import pytest
 
 from pipeline.qualify import (
+    TIER_OWN_ARTIST,
+    TIER_WEAK,
     ProfileRules,
     assess_fit,
     assess_liveness,
@@ -163,6 +165,49 @@ class TestFit:
         three = assess_fit(playlist([track("Plaid"), track("Autechre"), track("Aphex Twin")]), SYNMAN).score
 
         assert 0 < one < three <= 1
+
+
+class TestPlaylistsOwnedByTheProfilesOwnArtists:
+    """Pitching Synman to Bonobo for a place on Bonobo's own playlist is not a lead.
+
+    The 2026-09-20 spike qualified exactly that, twice, which is why this rule exists. It lives
+    here rather than in discovery because discovery has only a playlist id: the owner is not
+    known until the playlist has been fetched.
+    """
+
+    def test_a_playlist_owned_by_a_reference_artist_does_not_fit(self):
+        fit = assess_fit(playlist([track("Aphex Twin")], owner_name="Aphex Twin"), SYNMAN)
+
+        assert fit.tier == TIER_OWN_ARTIST
+        assert fit.qualifies is False
+
+    def test_the_owner_name_is_matched_the_way_every_other_name_here_is(self):
+        fit = assess_fit(playlist([track("Plaid")], owner_name="  BOARDS   of canada "), SYNMAN)
+
+        assert fit.tier == TIER_OWN_ARTIST
+
+    def test_somebody_elses_playlist_full_of_those_artists_is_the_whole_point(self):
+        tracks = [track("Aphex Twin"), track("Autechre"), track("Plaid")]
+
+        assert assess_fit(playlist(tracks, owner_name="A Curator"), SYNMAN).tier == "top"
+
+    def test_a_playlist_whose_owner_has_no_name_is_not_dropped(self):
+        assert assess_fit(playlist([track("Plaid")], owner_name=None), SYNMAN).tier == "acceptable"
+
+    def test_it_is_recorded_as_a_no_fit_rejection(self):
+        """There is no rejection reason of its own, and inventing one would mean a migration."""
+        tracks = [track("Aphex Twin", days_ago=5), track("Autechre", days_ago=10), track("Plaid")]
+
+        verdict = judge(playlist(tracks, owner_name="Aphex Twin"), [SYNMAN], TODAY)
+
+        assert verdict.status == "rejected"
+        assert verdict.rejection_reason == "no-fit"
+
+    def test_claude_is_never_asked_to_reconsider_it(self):
+        """`pipeline.evaluate` buys a second opinion only for TIER_WEAK, so this must not be that."""
+        fit = assess_fit(playlist([track("Aphex Twin")], owner_name="Aphex Twin"), SYNMAN)
+
+        assert fit.tier != TIER_WEAK
 
 
 @pytest.mark.parametrize(

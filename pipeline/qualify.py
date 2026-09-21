@@ -10,7 +10,8 @@ These are pure judgements on what Spotify told us, so they're easy to test and t
 - Fit, per profile, climbing a ladder: reference artists on the playlist (3+ is top tier, 1-2
   acceptable); failing that, the playlist names one of the profile's genres in its title or
   description; failing that, Claude may judge its sound (in `pipeline.evaluate`, because it costs
-  money). Any anti-signal artist or whole-word term is an outright rejection, whatever else fits.
+  money). Any anti-signal artist or whole-word term is an outright rejection, whatever else fits,
+  and so is a playlist owned by one of the profile's own reference artists.
 
 Jarred (2026-09-14) found requiring a reference artist far too restrictive, so genre and Claude
 matches qualify too. They score below any reference-artist match, and the digest always ranks
@@ -45,6 +46,7 @@ TIER_TOP, TIER_ACCEPTABLE, TIER_WEAK, TIER_REJECTED = "top", "acceptable", "weak
 TIER_GENRE = "genre"  # no reference artists, but the playlist names one of the profile's genres
 TIER_CLAUDE = "claude"  # no reference artists or genre words, but Claude judged the sound to fit
 TIER_TOO_SMALL = "too-small"  # would fit, but below the profile's follower floor
+TIER_OWN_ARTIST = "own-artist"  # the playlist belongs to one of the profile's own reference artists
 QUALIFYING_TIERS = frozenset({TIER_TOP, TIER_ACCEPTABLE, TIER_GENRE, TIER_CLAUDE})
 # Both below the lowest reference-artist score (one artist of three: 0.33).
 GENRE_MATCH_SCORE = 0.3
@@ -168,6 +170,8 @@ def assess_fit(data: PlaylistData, rules: ProfileRules) -> FitCheck:
 
     if anti_found:
         return FitCheck(TIER_REJECTED, 0.0, present, anti_found, genres)
+    if _owned_by_reference_artist(data, rules):
+        return FitCheck(TIER_OWN_ARTIST, 0.0, present, (), genres)
     if len(present) >= TOP_TIER_REFERENCE_ARTISTS:
         tier, score = TIER_TOP, 1.0
     elif present:
@@ -218,6 +222,23 @@ def verdict_with_fits(data: PlaylistData, verdict: Verdict, fits: dict[int, FitC
         rejection_reason=reason,
         status=PlaylistStatus.REJECTED if reason else PlaylistStatus.QUALIFIED,
     )
+
+
+def _owned_by_reference_artist(data: PlaylistData, rules: ProfileRules) -> bool:
+    """Is this the profile's own reference artist's playlist? Then it is not a lead.
+
+    The 2026-09-20 spike qualified playlists owned by Bonobo and Four Tet, and pitching Synman to
+    Bonobo for a place on Bonobo's own playlist is not a pitch anybody sends.
+
+    It is checked here rather than in discovery for an honest reason: discovery has a playlist id
+    and almost nothing else, and the owner is not known until the playlist is fetched, one step
+    later. Here is the first moment it *can* be checked -- and it is the right place anyway, since
+    an artist-owned playlist is no more pitchable for having been found by search than by the
+    artist graph. The match is on the owner's display name, because a playlist's owner id is a
+    Spotify *user* id and says nothing about which act it belongs to.
+    """
+    owner = normalize_text(data.owner_name or "")
+    return bool(owner) and any(normalize_text(name) == owner for name in rules.reference_artists)
 
 
 def _with_follower_floor(fit: FitCheck, data: PlaylistData, rules: ProfileRules) -> FitCheck:
